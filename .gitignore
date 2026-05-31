@@ -1,0 +1,37 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!.env.sample
+*.key
+*.pem
+*.pfx
+*.p12
+credentials.*
+secrets.*
+*.tfstate
+*.tfstate.backup
+
+# Local agent overrides (project-specific edits to hub agents stay local)
+*.local.md
+
+# Feature factory state from real runs
+.claude/feature-factory/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# Python / node detritus that might show up if scripts land here
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+venv/
+llm-context/
+
+# Personal Claude Code config (per-user permissions + paths)
+.claude/settings.local.json
