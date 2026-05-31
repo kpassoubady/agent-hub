@@ -11,7 +11,8 @@ agents/         # one file per agent — the 7-agent factory chain
 skills/         # multi-step orchestrators (currently: feature-factory)
 hooks/          # reusable git hooks (currently: block-secrets)
 templates/      # skeleton for new hub agents
-docs/           # source material and design notes
+install.sh      # installer for macOS / Linux / git-bash
+install.ps1     # installer for Windows PowerShell
 VERSION         # hub-wide semver tag
 ```
 
@@ -29,19 +30,44 @@ VERSION         # hub-wide semver tag
 
 Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill. Three human checkpoints: story approval, brief approval, PR review.
 
-## Using these agents today (before install tooling lands)
+## Installation
 
-In a project repo:
+Clone the repo and run the installer for your OS.
+
+**macOS / Linux / git-bash on Windows:**
 
 ```bash
-mkdir -p .claude/agents .claude/skills
-ln -s /Users/kangs/code/github/agent-hub/agents/*.md .claude/agents/
-ln -s /Users/kangs/code/github/agent-hub/skills/feature-factory .claude/skills/
+git clone https://github.com/kpassoubady/agent-hub.git
+cd agent-hub
+./install.sh
 ```
 
-(Use `cp -r` instead of `ln -s` on Windows or when a frozen snapshot is wanted.)
+**Windows (PowerShell):**
 
-Then in Claude Code: `/feature-factory <feature description>`.
+```powershell
+git clone https://github.com/kpassoubady/agent-hub.git
+cd agent-hub
+.\install.ps1
+```
+
+Both installers copy modules to `~/.claude/` (the global Claude Code config) so the agents are available across every project. Re-running is safe — existing files are skipped unless you pass `--force`.
+
+### Common flags
+
+| Flag | Purpose |
+|---|---|
+| (no args) | Install all modules: `agents`, `skills`, `templates`, `hooks` |
+| `agents skills` | Install only the listed modules |
+| `-f` / `--force` (sh) or `-Force` (ps1) | Overwrite existing files |
+| `-d` / `--dry-run` (sh) or `-DryRun` (ps1) | Show what would happen without writing |
+| `-p PATH` (sh) or `-Path PATH` (ps1) | Per-project install: target `<project>/.claude` instead of `~/.claude` |
+| `-h` / `--help` (sh) or `-Help` (ps1) | Show help |
+
+### Verifying the install
+
+After `./install.sh`, in Claude Code: `/feature-factory <feature description>` should launch the orchestrator.
+
+The 7 agents land in `~/.claude/agents/`, the skill in `~/.claude/skills/feature-factory/`, the pre-commit hook in `~/.claude/hooks/block-secrets.sh` (ready to symlink into a project's `.git/hooks/`).
 
 ## Project-specific configuration
 
