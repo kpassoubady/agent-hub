@@ -7,13 +7,14 @@ A personal hub of reusable Claude Code agents, skills, and rules that work acros
 ## What's in here
 
 ```
-agents/         # one file per agent — the 7-agent factory chain
-skills/         # multi-step orchestrators (currently: feature-factory)
-hooks/          # reusable git hooks (currently: block-secrets)
-templates/      # skeleton for new hub agents
-install.sh      # installer for macOS / Linux / git-bash
-install.ps1     # installer for Windows PowerShell
-VERSION         # hub-wide semver tag
+agents/             # one file per agent — the 7-agent factory chain
+skills/             # multi-step orchestrators (currently: feature-factory)
+hooks/              # reusable git hooks (currently: block-secrets)
+templates/          # skeleton for new hub agents
+install.sh          # Claude Code installer (macOS / Linux / git-bash)
+install.ps1         # Claude Code installer (Windows PowerShell)
+sync-windsurf.sh    # Windsurf workspace sync (symlinks by default)
+VERSION             # hub-wide semver tag
 ```
 
 ## The 7-agent factory chain
@@ -110,12 +111,47 @@ If something tempts you to put private content here, that's the sorting rule tel
 
 The repo ships with a pre-commit hook ([hooks/block-secrets.sh](hooks/block-secrets.sh)) that refuses to commit common secret files and patterns — install it in any project that consumes the hub.
 
+## Use with Windsurf
+
+The agent files double as Windsurf workflows — Windsurf only requires `description:` in frontmatter, and the Claude-specific fields (`tools`, `model`, `version`, …) are silently ignored. A separate script handles the per-workspace sync.
+
+```bash
+# In the agent-hub directory
+./sync-windsurf.sh                            # Sync to ./.windsurf/workflow/
+./sync-windsurf.sh /path/to/workspace         # Sync to a specific workspace
+./sync-windsurf.sh -f /path/to/workspace      # Force overwrite existing links
+./sync-windsurf.sh --copy /path/to/workspace  # Copy instead of symlink
+./sync-windsurf.sh -d                         # Dry run
+```
+
+Default is symlink so hub updates flow into every synced workspace automatically. After sync, each agent becomes a Windsurf slash command (`/researcher`, `/spec-writer`, …) and the orchestrator becomes `/feature-factory`.
+
+### What works in Windsurf
+- Full agent body and instructions
+- Three human checkpoints (conversational pauses)
+- Slash-command invocation per agent
+
+### What's different from Claude Code
+
+| Claude Code | Windsurf |
+|---|---|
+| Subagents with isolated context windows | Cascade runs everything in one context |
+| Hard tool restrictions (e.g. `tools: Read, Grep, Glob`) | Guidance only — Cascade has full tools |
+| Per-agent model selection | One Cascade model |
+| Backend / frontend folder hard scoping | Guidance only |
+
+The discipline lives in the prompts more than in the tool restrictions, so the chain still works — it just relies on the agents *following* the rules rather than being *blocked* from breaking them.
+
+### Cursor & Copilot
+
+Not directly supported. Cursor uses `.cursor/rules/*.mdc` (different frontmatter schema); Copilot uses a single `.github/copilot-instructions.md` per workspace (no slash commands, no per-agent files). Adapters could be added if you use them more.
+
 ## What's next
 
 - Run the chain against a real feature (canary).
-- Build `agent-hub-install` / `agent-hub-sync` / `agent-hub-diff`.
 - Write snapshot tests per agent.
 - Add the generic dev agents — pr-reviewer, test-generator, doc-writer, refactor-tracker.
+- Add a `--target windsurf` mode (or merge `sync-windsurf.sh` into `install.sh`) if multi-tool installation becomes a frequent need.
 
 ## License
 
