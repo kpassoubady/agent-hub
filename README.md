@@ -11,6 +11,7 @@ agents/             # one file per agent — the 7-agent factory chain
 skills/             # multi-step orchestrators (currently: feature-factory)
 hooks/              # reusable git hooks (currently: block-secrets)
 templates/          # skeleton for new hub agents
+diagrams/           # mermaid diagrams explaining the chain, distribution, drift loop
 install.sh          # Claude Code installer (macOS / Linux / git-bash)
 install.ps1         # Claude Code installer (Windows PowerShell)
 sync-windsurf.sh    # Windsurf workspace sync (symlinks by default)
@@ -18,6 +19,41 @@ VERSION             # hub-wide semver tag
 ```
 
 ## The 7-agent factory chain
+
+```mermaid
+flowchart TD
+    Idea[Rough feature idea]
+    Idea --> R[1. researcher<br/>maps the codebase]
+    R --> SW[2. story-writer<br/>user story + acceptance criteria]
+    SW --> CP1{{Checkpoint 1<br/>approve story?}}
+    CP1 -.->|changes needed| SW
+    CP1 ==>|approved| SP[3. spec-writer<br/>technical brief]
+    SP --> CP2{{Checkpoint 2<br/>approve brief?}}
+    CP2 -.->|changes needed| SP
+    CP2 ==>|approved| BE[4. backend-builder<br/>backend folders only]
+    BE --> FE[5. frontend-builder<br/>frontend folders only]
+    FE --> TV[6. test-verifier<br/>test files only]
+    TV --> V[7. validator<br/>read-only gap analysis]
+    V --> CP3{{Checkpoint 3<br/>review and open PR}}
+
+    TV -.->|FAIL| BE
+    TV -.->|FAIL| FE
+    V -.->|Critical| BE
+    V -.->|Critical| FE
+    FE -.->|API mismatch| BE
+
+    style Idea fill:#f5f5f5,stroke:#666,color:#000
+    style R fill:#e1f5ff,stroke:#0366d6,color:#000
+    style SW fill:#e1f5ff,stroke:#0366d6,color:#000
+    style SP fill:#e1f5ff,stroke:#0366d6,color:#000
+    style BE fill:#e1f5ff,stroke:#0366d6,color:#000
+    style FE fill:#e1f5ff,stroke:#0366d6,color:#000
+    style TV fill:#e1f5ff,stroke:#0366d6,color:#000
+    style V fill:#e1f5ff,stroke:#0366d6,color:#000
+    style CP1 fill:#fff3cd,stroke:#d4a017,color:#000
+    style CP2 fill:#fff3cd,stroke:#d4a017,color:#000
+    style CP3 fill:#fff3cd,stroke:#d4a017,color:#000
+```
 
 | # | Agent | Tools | Role |
 |---|---|---|---|
@@ -30,6 +66,8 @@ VERSION             # hub-wide semver tag
 | 7 | [validator](agents/validator.md) | Read, Grep, Glob | Read-only gap analysis vs story and brief |
 
 Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill. Three human checkpoints: story approval, brief approval, PR review.
+
+More diagrams — distribution model and the drift loop — under [diagrams/](diagrams/).
 
 ## Installation
 
