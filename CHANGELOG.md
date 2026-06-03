@@ -6,7 +6,7 @@ All notable changes to this hub are recorded here. Hub follows semver; each agen
 
 ### Added
 
-- **`agent-hub-detect.sh`** — auto-generates `.agenthub-config.yaml` for any project. Detects language, framework, project shape, test framework, suggested source folders, and default test/lint/typecheck commands. Supports `--force`, `--dry-run`, and a positional project-path argument.
+- **`agent-hub-detect.sh`** — auto-generates `.agenthub-config.yaml` for any project. Detects language, framework, project shape, test framework, suggested source folders, and default test/lint/typecheck commands. Supports `--force`, `--dry-run`, and a positional project-path argument. Languages supported: Python, Node, Ruby, Go, Rust, Java (Maven + Gradle), and .NET (C# / F#).
 - **Project shape model** in `.agenthub-config.yaml`: `full-stack`, `backend-only`, `frontend-only`, `library`. The orchestrator uses this to skip irrelevant builders.
 - **Escalating retry context** in the `feature-factory` orchestrator. Attempt 1 gets the full brief; attempt 2 gets a narrow failure-focused prompt; attempt 3 adds root-cause context and prior-attempt summaries.
 - **Learning directory pattern** (`<project>/.claude/feature-factory/learning/`) for cross-run memory: `patterns.md` (researcher), `selectors.md` (test-verifier), `failures.md` (validator). Documented in the orchestrator and referenced from `researcher`, `spec-writer`, and `validator`.
@@ -14,6 +14,11 @@ All notable changes to this hub are recorded here. Hub follows semver; each agen
 
 ### Changed
 
+- **`agent-hub-detect.sh`** language-aware folder suggestions:
+  - Java projects suggest `src/main/java` (backend) and `src/test/java` (test) instead of generic defaults.
+  - Python "script-style" projects (with `.py` files at the root and no package or `src/` directory) suggest `.` (project root) instead of a non-existent `src/`.
+  - Java `test-command` and `typecheck-command` detect Gradle vs Maven and use the right tool.
+  - .NET projects get `dotnet test`, `dotnet build --no-restore`, `dotnet format --verify-no-changes`.
 - **`spec-writer.md`** output contract now leads with a one-line `Builders needed:` declaration so the orchestrator knows whether to invoke backend-builder, frontend-builder, both, or neither for the current feature.
 - **`feature-factory` SKILL.md** gained a `Step 0 — Read project shape` section and a per-feature override rule: a builder is skipped when its section in the brief is `None`, regardless of project shape.
 - **`validator.md`** gained a failure mode for recurring findings: append to `learning/failures.md` and recommend a `CLAUDE.md` or hub-config rule.

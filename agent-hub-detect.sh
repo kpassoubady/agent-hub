@@ -86,6 +86,21 @@ first_existing_dir() {
 
 # ----- language and framework -----
 
+has_glob() {
+  # Returns 0 if any file matching the glob exists in $PROJECT_DIR (non-recursive).
+  compgen -G "$PROJECT_DIR/$1" >/dev/null 2>&1
+}
+
+has_dotnet_files() {
+  for ext in sln slnx csproj fsproj vbproj; do
+    has_glob "*.$ext" && return 0
+    if find "$PROJECT_DIR" -maxdepth 3 -name "*.$ext" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -1 | grep -q .; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 detect_language() {
   if   [[ -f "$PROJECT_DIR/pyproject.toml" || -f "$PROJECT_DIR/setup.py" || -f "$PROJECT_DIR/requirements.txt" ]]; then echo python
   elif [[ -f "$PROJECT_DIR/package.json" ]]; then echo node
@@ -93,6 +108,7 @@ detect_language() {
   elif [[ -f "$PROJECT_DIR/go.mod" ]]; then echo go
   elif [[ -f "$PROJECT_DIR/Cargo.toml" ]]; then echo rust
   elif [[ -f "$PROJECT_DIR/pom.xml" || -f "$PROJECT_DIR/build.gradle" || -f "$PROJECT_DIR/build.gradle.kts" ]]; then echo java
+  elif has_dotnet_files; then echo dotnet
   else echo unknown
   fi
 }
@@ -114,6 +130,17 @@ detect_framework() {
       [[ -f "$PROJECT_DIR/svelte.config.js" ]] && { echo svelte; return; }
       echo node
       ;;
+    dotnet)
+      if find "$PROJECT_DIR" -maxdepth 3 -name "*.csproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -5 | xargs grep -l "Microsoft.AspNetCore" 2>/dev/null | head -1 | grep -q .; then
+        echo aspnetcore
+      elif find "$PROJECT_DIR" -maxdepth 3 -name "*.fsproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -1 | grep -q .; then
+        echo fsharp
+      elif find "$PROJECT_DIR" -maxdepth 3 -name "*.csproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -1 | grep -q .; then
+        echo csharp
+      else
+        echo dotnet
+      fi
+      ;;
     *) echo "$lang" ;;
   esac
 }
@@ -123,7 +150,7 @@ detect_framework() {
 detect_backend() {
   local lang="$1"
   case "$lang" in
-    python|go|rust|java|ruby) return 0 ;;
+    python|go|rust|java|ruby|dotnet) return 0 ;;
     node)
       for dep in express koa fastify hapi @nestjs/core next nuxt astro remix; do
         has_dep_in_package_json "$dep" && return 0
@@ -188,6 +215,10 @@ find_server_framework() {
       done
       return 1
       ;;
+    dotnet)
+      find "$PROJECT_DIR" -maxdepth 3 -name "*.csproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -10 | xargs grep -lE "Microsoft.AspNetCore|Microsoft.NET.Sdk.Web" 2>/dev/null | head -1 | grep -q . && return 0
+      return 1
+      ;;
   esac
   return 1
 }
@@ -235,6 +266,11 @@ detect_test_framework() {
       echo minitest
       ;;
     java)  echo junit ;;
+    dotnet)
+      find "$PROJECT_DIR" -maxdepth 3 -name "*.csproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -10 | xargs grep -l "xunit" 2>/dev/null | head -1 | grep -q . && { echo xunit; return; }
+      find "$PROJECT_DIR" -maxdepth 3 -name "*.csproj" -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | head -10 | xargs grep -l "NUnit" 2>/dev/null | head -1 | grep -q . && { echo nunit; return; }
+      echo dotnet-test
+      ;;
     *)     echo unknown ;;
   esac
 }
@@ -252,17 +288,23 @@ suggest_backend_folder() {
       else
         local first
         first=$(find "$PROJECT_DIR" -maxdepth 2 -name __init__.py -not -path "*/test*" -not -path "*/venv/*" -not -path "*/.venv/*" 2>/dev/null | head -1)
-        if [[ -n "$first" ]]; then dirname "$first" | sed "s|^$PROJECT_DIR/||"
-        else echo src
+        if [[ -n "$first" ]]; then
+          dirname "$first" | sed "s|^$PROJECT_DIR/||"
+        elif compgen -G "$PROJECT_DIR/*.py" >/dev/null 2>&1; then
+          # Script-style project with .py files at the root.
+          echo "."
+        else
+          echo src
         fi
       fi
       ;;
-    node)  first_existing_dir src/server src/api backend server api src/backend src ;;
-    go)    first_existing_dir cmd internal pkg ;;
-    rust)  first_existing_dir src ;;
-    ruby)  first_existing_dir app lib ;;
-    java)  first_existing_dir src/main/java src ;;
-    *)     first_existing_dir src lib ;;
+    node)   first_existing_dir src/server src/api backend server api src/backend src ;;
+    go)     first_existing_dir cmd internal pkg ;;
+    rust)   first_existing_dir src ;;
+    ruby)   first_existing_dir app lib ;;
+    java)   first_existing_dir src/main/java src ;;
+    dotnet) first_existing_dir src ;;
+    *)      first_existing_dir src lib ;;
   esac
 }
 
@@ -271,7 +313,12 @@ suggest_frontend_folder() {
 }
 
 suggest_test_folder() {
-  first_existing_dir tests test spec __tests__ src/tests
+  local lang="$1"
+  case "$lang" in
+    java)   first_existing_dir src/test/java tests test ;;
+    dotnet) first_existing_dir tests test ;;
+    *)      first_existing_dir tests test spec __tests__ src/tests ;;
+  esac
 }
 
 suggest_test_command() {
@@ -281,7 +328,11 @@ suggest_test_command() {
     go)     echo "go test ./..." ;;
     rust)   echo "cargo test" ;;
     ruby)   echo "bundle exec rspec" ;;
-    java)   echo "mvn test" ;;
+    java)
+      [[ -f "$PROJECT_DIR/build.gradle" || -f "$PROJECT_DIR/build.gradle.kts" ]] && { echo "./gradlew test"; return; }
+      echo "mvn test"
+      ;;
+    dotnet) echo "dotnet test" ;;
     *)      echo "echo 'no test command configured'" ;;
   esac
 }
@@ -292,7 +343,11 @@ suggest_typecheck_command() {
     node)   echo "npm run typecheck" ;;
     go)     echo "go vet ./..." ;;
     rust)   echo "cargo check" ;;
-    java)   echo "mvn compile" ;;
+    java)
+      [[ -f "$PROJECT_DIR/build.gradle" || -f "$PROJECT_DIR/build.gradle.kts" ]] && { echo "./gradlew compileJava"; return; }
+      echo "mvn compile"
+      ;;
+    dotnet) echo "dotnet build --no-restore" ;;
     *)      echo "" ;;
   esac
 }
@@ -305,6 +360,7 @@ suggest_lint_command() {
     rust)   echo "cargo clippy" ;;
     ruby)   echo "bundle exec rubocop" ;;
     java)   echo "mvn checkstyle:check" ;;
+    dotnet) echo "dotnet format --verify-no-changes" ;;
     *)      echo "" ;;
   esac
 }
@@ -325,7 +381,7 @@ TEST_FRAMEWORK=$(detect_test_framework "$LANGUAGE")
 
 BACKEND_FOLDER=$(suggest_backend_folder "$LANGUAGE")
 FRONTEND_FOLDER=$(suggest_frontend_folder)
-TEST_FOLDER=$(suggest_test_folder)
+TEST_FOLDER=$(suggest_test_folder "$LANGUAGE")
 
 TEST_CMD=$(suggest_test_command "$LANGUAGE")
 TYPECHECK_CMD=$(suggest_typecheck_command "$LANGUAGE")
