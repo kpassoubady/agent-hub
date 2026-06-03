@@ -2,20 +2,22 @@
 
 A personal hub of reusable Claude Code agents, skills, and rules that work across any project.
 
-**Status:** v0.1.0 — Phase 1 partial. The 7-agent factory chain and the `feature-factory` orchestrator skill are written. Snapshot tests, canary run, and install tooling still pending.
+**Status:** v0.2.0 — Project auto-detection, project-shape skip logic (backend-only / frontend-only / library projects skip irrelevant builders), and escalating retry context have landed. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's in here
 
 ```
-agents/             # one file per agent — the 7-agent factory chain
-skills/             # multi-step orchestrators (currently: feature-factory)
-hooks/              # reusable git hooks (currently: block-secrets)
-templates/          # skeleton for new hub agents
-diagrams/           # mermaid diagrams explaining the chain, distribution, drift loop
-install.sh          # Claude Code installer (macOS / Linux / git-bash)
-install.ps1         # Claude Code installer (Windows PowerShell)
-sync-windsurf.sh    # Windsurf workspace sync (symlinks by default)
-VERSION             # hub-wide semver tag
+agents/                # one file per agent — the 7-agent factory chain
+skills/                # multi-step orchestrators (currently: feature-factory)
+hooks/                 # reusable git hooks (currently: block-secrets)
+templates/             # skeleton for new hub agents
+diagrams/              # mermaid diagrams explaining the chain, distribution, drift loop
+install.sh             # Claude Code installer (macOS / Linux / git-bash)
+install.ps1            # Claude Code installer (Windows PowerShell)
+sync-windsurf.sh       # Windsurf workspace sync (symlinks by default)
+agent-hub-detect.sh    # Auto-generate .agenthub-config.yaml for any project
+VERSION                # hub-wide semver tag
+CHANGELOG.md           # what changed in each release
 ```
 
 ## The 7-agent factory chain
@@ -110,9 +112,29 @@ The 7 agents land in `~/.claude/agents/`, the skill in `~/.claude/skills/feature
 
 ## Project-specific configuration
 
-Each agent reads `.agenthub-config.yaml` at the consuming project's root. Example:
+Each agent reads `.agenthub-config.yaml` at the consuming project's root.
+
+### Auto-generate it
+
+In any project, run:
+
+```bash
+/path/to/agent-hub/agent-hub-detect.sh                  # detect current dir
+/path/to/agent-hub/agent-hub-detect.sh /path/to/project # detect a specific project
+/path/to/agent-hub/agent-hub-detect.sh -d               # dry-run; print to stdout
+```
+
+The detector scans the project, identifies language and framework, derives the project shape, and writes `.agenthub-config.yaml` with sensible defaults. Re-run with `--force` to refresh from auto-detection.
+
+### Schema (v2)
 
 ```yaml
+project:
+  # Which agents apply: full-stack | backend-only | frontend-only | library
+  shape: full-stack
+  language: node       # advisory; agents use it to pick conventions
+  framework: vite      # advisory
+
 backend:
   folders: ["src/server", "src/api"]
   test-command: "npm test --workspace=server"
@@ -129,7 +151,18 @@ test:
   command: "npx playwright test"
 ```
 
-The agents fall back to sensible defaults if a key is missing.
+### Project shape — skip what you don't have
+
+| `project.shape` | Chain |
+|---|---|
+| `full-stack` | All 7 agents run |
+| `backend-only` | frontend-builder is skipped |
+| `frontend-only` | backend-builder is skipped |
+| `library` | frontend-builder is skipped; spec-writer treats the package's public API as the "interface" |
+
+Even for `full-stack` projects, the orchestrator skips a builder per feature when the spec-writer's brief marks its section `None` — the brief is the per-feature source of truth.
+
+The agents fall back to sensible defaults if a key is missing. If `project.shape` is missing, the chain assumes `full-stack` and warns once.
 
 ## What does NOT belong in this hub
 
