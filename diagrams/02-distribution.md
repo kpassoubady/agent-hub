@@ -2,19 +2,25 @@
 
 A single source of truth feeds both Claude Code (global install) and Windsurf (per-workspace sync). Edit an agent once; both tools pick it up.
 
+> **v0.2.0** — added `agent-hub-detect.sh` for auto-generating per-project config.
+
 ```mermaid
 flowchart LR
     Hub[(Agent Hub<br/>single source of truth<br/>agents · skills · hooks · templates)]
 
     Hub -->|"install.sh / install.ps1<br/>(copy)"| ClaudeHome["~/.claude/<br/>global Claude Code config"]
     Hub -->|"sync-windsurf.sh<br/>(symlink by default)"| WSWorkspace["&lt;workspace&gt;/.windsurf/workflow/<br/>per-workspace"]
+    Hub -->|"agent-hub-detect.sh<br/>(auto-generate)"| Config[".agenthub-config.yaml<br/>in each consuming project"]
 
     ClaudeHome --> AllClaudeSessions["Every Claude Code session<br/>on this machine"]
     WSWorkspace --> Cascade["Cascade in that workspace<br/>/researcher · /spec-writer · /feature-factory · ..."]
+    Config --> AllClaudeSessions
+    Config --> Cascade
 
     style Hub fill:#0366d6,stroke:#024899,color:#fff
     style ClaudeHome fill:#e1f5ff,stroke:#0366d6,color:#000
     style WSWorkspace fill:#e1f5ff,stroke:#0366d6,color:#000
+    style Config fill:#d4edda,stroke:#28a745,color:#000
     style AllClaudeSessions fill:#f5f5f5,stroke:#999,color:#000
     style Cascade fill:#f5f5f5,stroke:#999,color:#000
 ```
@@ -24,6 +30,12 @@ flowchart LR
 `./install.sh` (or `install.ps1` on Windows) copies the agent files into `~/.claude/agents/`, the skill into `~/.claude/skills/feature-factory/`, and the hook into `~/.claude/hooks/`. The install is global — agents become available in every Claude Code session on the machine.
 
 Updating: re-run with `--force` to overwrite, or `--dry-run` first to preview.
+
+## Project config path
+
+`./agent-hub-detect.sh` scans a consuming project and writes `.agenthub-config.yaml` with detected `project.shape`, language, framework, folder hints, and test/lint/typecheck commands. The config file stays in the project repo and is read by every agent at runtime.
+
+Languages supported: Python, Node, Ruby, Go, Rust, Java (Maven + Gradle), .NET (C# / F#).
 
 ## Windsurf path
 
@@ -44,4 +56,4 @@ Agent file format is identical across both — Windsurf only requires `descripti
 
 ## Cursor and Copilot
 
-Not directly supported in v0.1. Both use schemas different enough that a symlink wouldn't work — they'd need translators. If usage justifies it, they can be added as additional sync scripts.
+Not directly supported in v0.2. Both use schemas different enough that a symlink wouldn't work — they'd need translators. If usage justifies it, they can be added as additional sync scripts.
