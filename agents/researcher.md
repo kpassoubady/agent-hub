@@ -1,6 +1,6 @@
 ---
 name: researcher
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: Maps the relevant parts of an existing codebase before any feature work begins. Read-only.
 tools: Read, Grep, Glob
@@ -38,7 +38,8 @@ Inspect the codebase and explain how things work — before a single line of cod
 
 - A rough feature description from the user
 - The project's CLAUDE.md (loaded by Claude Code automatically; references the stack and conventions)
-- `.agenthub-config.yaml` (for folder hints — backend/frontend boundaries, test commands)
+- `.agenthub-config.yaml` (for folder hints — backend/frontend boundaries, test commands, project shape)
+- `<project>/.claude/feature-factory/learning/patterns.md` if it exists (cached patterns from past runs — read at start, append novelties at end)
 
 # Output contract
 

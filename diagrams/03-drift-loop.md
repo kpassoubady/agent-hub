@@ -2,6 +2,8 @@
 
 The hub gets better by absorbing surprises from real projects. Every miss becomes a hub improvement that benefits every consuming project.
 
+> **v0.2.0** — added the learning directory as a fast, project-local feedback path alongside the hub-level drift loop.
+
 ```mermaid
 flowchart LR
     Use[Project uses<br/>hub agents]
@@ -19,6 +21,9 @@ flowchart LR
     Propagate --> Use
     Propagate --> Others
 
+    Surprise -->|"auto"| Learn[("learning/<br/>patterns · selectors · failures")]
+    Learn -.->|"next run"| Use
+
     style Use fill:#f5f5f5,stroke:#666,color:#000
     style Others fill:#f5f5f5,stroke:#666,color:#000
     style Surprise fill:#fff3cd,stroke:#d4a017,color:#000
@@ -26,6 +31,7 @@ flowchart LR
     style Fix fill:#e1f5ff,stroke:#0366d6,color:#000
     style Propagate fill:#e1f5ff,stroke:#0366d6,color:#000
     style Local fill:#f5f5f5,stroke:#999,color:#000
+    style Learn fill:#f0e6ff,stroke:#7c3aed,color:#000
 ```
 
 ## The flow
@@ -35,6 +41,14 @@ flowchart LR
 3. If yes → apply the fix in the hub, bump the agent's `version:` in frontmatter, update the CHANGELOG.
 4. Propagate with `./install.sh --force` (Claude Code) or `./sync-windsurf.sh --force` (Windsurf). Symlinked Windsurf workspaces inherit the fix automatically.
 5. Every other project inherits the improvement on its next sync.
+
+## Two feedback loops
+
+**Hub-level (slow, cross-project):** A surprise triggers a hub fix, version bump, and re-sync. Every project benefits.
+
+**Learning directory (fast, project-local):** Agents automatically write to `learning/patterns.md`, `selectors.md`, and `failures.md` during each run. The next chain run in the same project reads those files and avoids repeat mistakes — no human action needed.
+
+The two loops are complementary: the learning directory handles project-specific memory automatically; the hub loop captures generic patterns that deserve to be shared.
 
 ## Why it compounds
 

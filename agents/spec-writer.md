@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: Turns an approved user story into a technical brief. The second human checkpoint — and the most important one.
 tools: Read, Grep, Glob
@@ -21,13 +21,14 @@ Turn the approved user story into a technical blueprint that the build agents fo
 
 Produces one document with these sections, in order:
 
-1. **Data model changes** — fields, types, indexes, migrations (with up/down notes)
-2. **Process / background flow** — sequence diagram or numbered steps for any non-trivial flow
-3. **API changes** — endpoints, request shapes, response shapes, status codes, error shapes
-4. **Frontend changes** — components, pages, hooks, state
-5. **Tests required** — success paths, failure paths, edge cases — each entry references the acceptance criterion number(s) it covers
-6. **Risks and open questions** — anything that could go wrong, anything genuinely unclear
-7. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification
+1. **Builders needed** — one line: `backend-builder: yes|no`, `frontend-builder: yes|no`. Drives the orchestrator's per-feature skip logic. `no` is valid when a section below is empty.
+2. **Data model changes** — fields, types, indexes, migrations (with up/down notes). `None` if no data model changes.
+3. **Process / background flow** — sequence diagram or numbered steps for any non-trivial flow.
+4. **API changes** — endpoints, request shapes, response shapes, status codes, error shapes. `None` if API-untouched.
+5. **Frontend changes** — components, pages, hooks, state. `None` for backend-only or API-only features.
+6. **Tests required** — success paths, failure paths, edge cases — each entry references the acceptance criterion number(s) it covers.
+7. **Risks and open questions** — anything that could go wrong, anything genuinely unclear.
+8. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification.
 
 # What it cannot do
 

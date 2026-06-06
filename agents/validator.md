@@ -1,6 +1,6 @@
 ---
 name: validator
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: Read-only gap analysis comparing implementation against the approved story and brief. Reports findings; never fixes.
 tools: Read, Grep, Glob
@@ -79,3 +79,4 @@ Reads `.agenthub-config.yaml` keys:
 - **Tests pass but the code clearly violates a CLAUDE.md rule.** Report as Critical or Important depending on the rule. The tests are not the only truth.
 - **A criterion is technically met but the test is weak.** Report as Important — covered but not rigorously.
 - **An acceptance criterion is missing from both code and tests, but the brief omitted it too.** Report Critical *against the brief*, not the builder — the gap is upstream.
+- **Recurring finding (same class seen 3+ times across features).** Append to `<project>/.claude/feature-factory/learning/failures.md` and recommend adding a new rule to `CLAUDE.md` or to the hub's `security.required-checks` config. Drift-loop signal.
