@@ -1,0 +1,94 @@
+# Loop Configuration Schema
+#
+# Any skill that uses the loop-engine protocol declares its loop
+# behaviour using this schema. Embed it in the skill's SKILL.md
+# frontmatter under a `loop:` key, or reference it inline.
+#
+# See: skills/loop-engine/SKILL.md for the full protocol.
+# See: templates/loop-template.md for a skill skeleton that uses this.
+
+loop:
+  # ── Core ──────────────────────────────────────────────────────
+
+  # Hard stop. The loop will never exceed this count.
+  # Recommended: 3 for most retry loops, 5–8 for iterative refinement.
+  max-iterations: 3
+
+  # Operating mode.
+  #   autonomous   — runs to completion or limit, no human pauses
+  #   checkpointed — pauses after every iteration for human review
+  #   hybrid       — runs on success, pauses on failure or limit (default)
+  mode: hybrid
+
+  # ── Verifier ──────────────────────────────────────────────────
+
+  verifier:
+    # How the loop checks its own work.
+    #   command — run a shell command; exit 0 = pass
+    #   agent   — spawn a read-only agent that scores against criteria
+    #   rubric  — score each criterion 1–10; all must be 8+ to pass
+    type: command
+
+    # For type: command — the shell command to run.
+    # Supports project-relative paths and .agenthub-config.yaml variables.
+    command: "npm test"
+
+    # For type: agent — the agent name from agents/ to spawn as verifier.
+    # The agent must be read-only (scope: read-only).
+    # agent: "validator"
+
+    # For type: rubric — numbered criteria the model scores against.
+    # rubric:
+    #   - "All acceptance criteria from the story are implemented"
+    #   - "No files changed outside the agreed change plan"
+    #   - "All existing tests still pass"
+
+  # ── Escalation ────────────────────────────────────────────────
+
+  # How retry context changes between attempts.
+  #   standard — built-in escalation: full → narrow → root-cause → stop
+  #   custom   — the calling skill defines its own context strategy
+  escalation: standard
+
+  # ── State ─────────────────────────────────────────────────────
+
+  # Where to persist loop-state.jsonl.
+  # Supports variables:
+  #   {project}    — the consuming project's root
+  #   {skill-name} — the calling skill's name
+  #   {run-id}     — a unique identifier for this loop run (feature-slug, timestamp, etc.)
+  state-dir: "{project}/.claude/{skill-name}/{run-id}/"
+
+  # ── Checkpoints ───────────────────────────────────────────────
+
+  checkpoints:
+    # What happens when the verifier reports a failure.
+    #   pause  — stop and present the failure to the human
+    #   retry  — automatically retry with escalating context
+    #   skip   — log the failure and continue to the next step
+    on-failure: retry
+
+    # What happens when max-iterations is reached without success.
+    #   pause  — stop and ask the human what to do
+    #   report — log the result and return STOPPED_AT_LIMIT to the calling skill
+    on-limit: pause
+
+  # ── Learning ──────────────────────────────────────────────────
+
+  learning:
+    # Path to read cached patterns and past failures from.
+    # Empty string or omitted = no learning read.
+    read-from: "{project}/.claude/{skill-name}/learning/"
+
+    # Path to write new patterns and failures discovered during this run.
+    # Empty string or omitted = no learning write.
+    write-to: "{project}/.claude/{skill-name}/learning/"
+
+  # ── Cost awareness (optional) ─────────────────────────────────
+
+  # Advisory token budget for the full loop run.
+  # The loop engine cannot enforce a hard cap (it runs as agent instructions),
+  # but it logs warnings when the loop appears to be compounding cost
+  # without making progress.
+  # Omit or set to 0 to disable.
+  # token-budget: 200000

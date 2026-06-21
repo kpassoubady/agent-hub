@@ -1,6 +1,6 @@
 ---
 name: feature-factory
-version: 1.1.0
+version: 1.2.0
 hub-source: agent-hub
 description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints.
 ---
@@ -155,6 +155,96 @@ A retry that gets the same context as attempt 1 will produce the same mistake. V
 | 4+ | Stop. Pause and ask the user — the problem is upstream (story or brief), not in the implementation. |
 
 This applies to all retry loops: backend-builder retries (test failures, validator findings), frontend-builder retries (same), and the backend↔frontend handoff (API-mismatch loop).
+
+## Loop integration
+
+The feature-factory follows the generic [loop-engine protocol](../loop-engine/SKILL.md) at 5 points. Each maps to the loop engine's 5-phase cycle (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE) with explicit configuration.
+
+### Loop point 1 — Story checkpoint revisions (Step 2)
+
+**Loop: invoke loop-engine protocol.**
+
+- Goal: User approves the user story and acceptance criteria
+- Success criteria:
+  1. Story covers the feature description completely
+  2. Acceptance criteria are numbered and verifiable
+  3. User explicitly approves
+- Verifier: human approval
+- Max iterations: 3
+- Mode: `checkpointed`
+- On CONVERGED: add `STATUS: APPROVED` to `02-story.md`, proceed to Step 3
+- On STOPPED_AT_LIMIT: ask if the feature is well-defined enough to proceed
+- On PAUSED_FOR_HUMAN: present the story and ask: approve, request changes, or reject
+
+### Loop point 2 — Spec checkpoint revisions (Step 3)
+
+**Loop: invoke loop-engine protocol.**
+
+- Goal: User approves the technical brief
+- Success criteria:
+  1. Brief covers data model, API changes, frontend changes, and file-level plan
+  2. No anti-patterns flagged by the researcher
+  3. No scope creep beyond the story
+  4. User explicitly approves
+- Verifier: human approval
+- Max iterations: 3
+- Mode: `checkpointed`
+- On CONVERGED: mark `STATUS: APPROVED`, proceed to Step 4
+- On STOPPED_AT_LIMIT: ask if the story needs to be revised (back to Loop point 1)
+- On PAUSED_FOR_HUMAN: present the brief with callouts for contract mistakes
+
+### Loop point 3 — Backend ↔ frontend handoff (Step 4)
+
+**Loop: invoke loop-engine protocol.**
+
+- Goal: Frontend-builder accepts the API contract from backend-builder
+- Success criteria:
+  1. Frontend-builder does not report an API mismatch
+  2. Both builder summaries are complete
+- Verifier: frontend-builder's feedback (agent verifier)
+- Max iterations: 3
+- Mode: `hybrid`
+- On CONVERGED: proceed to Step 5
+- On STOPPED_AT_LIMIT: pause — the brief's API design is likely wrong
+- On PAUSED_FOR_HUMAN: present the mismatch and ask whether to fix the brief or adjust the API
+
+### Loop point 4 — Test failure → builder fix (Step 5)
+
+**Loop: invoke loop-engine protocol.**
+
+- Goal: Failing acceptance criterion passes
+- Success criteria:
+  1. The specific criterion reports `PASS` on re-run
+  2. No regressions in previously passing criteria
+- Verifier: test-verifier re-run (command verifier via `test.command`)
+- Max iterations: 3 per failing criterion
+- Mode: `autonomous`
+- On CONVERGED: continue to next failing criterion or proceed to Step 6
+- On STOPPED_AT_LIMIT: pause — the brief or the criterion is likely wrong
+- On PAUSED_FOR_HUMAN: present the criterion, all 3 attempts, and ask whether the brief needs revision
+
+### Loop point 5 — Validator critical → builder fix (Step 6)
+
+**Loop: invoke loop-engine protocol.**
+
+- Goal: No Critical findings remain in the validator report
+- Success criteria:
+  1. Validator re-run reports zero Critical findings
+  2. No new Critical findings introduced by the fix
+- Verifier: validator re-run (agent verifier)
+- Max iterations: 3
+- Mode: `autonomous`
+- On CONVERGED: proceed to Step 7 (hand off)
+- On STOPPED_AT_LIMIT: pause — something fundamental is off
+- On PAUSED_FOR_HUMAN: present all Critical findings and ask what to do
+
+### State integration
+
+Each loop point writes its iteration log to `loop-state.jsonl` within the feature's state directory (`<project>/.claude/feature-factory/<feature-slug>/`). This sits alongside the existing numbered output files (`01-research.md`, `02-story.md`, etc.) and enables resume on session interruption.
+
+The escalating context strategy from the "Retry strategy" section above maps directly to the loop engine's standard escalation: attempt 1 full context, attempt 2 narrow, attempt 3 root-cause, attempt 4+ stop.
+
+See the [loop framework diagram](../../diagrams/04-loop-framework.md) for a visual overview and the [loop guide](../../docs/loop-guide.md) for the full protocol reference.
 
 ## Learning directory (optional, project-local)
 
