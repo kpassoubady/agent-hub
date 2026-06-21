@@ -2,6 +2,24 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.3.0] — 2026-06-21
+
+### Added
+
+- **Generic loop-engine skill** (`skills/loop-engine/SKILL.md`) — a reusable loop protocol that any skill can invoke for iterative work. Handles the 5-phase loop lifecycle (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE), state persistence via `loop-state.jsonl`, escalating retry context, stop conditions, cost awareness, and three operating modes (`autonomous`, `checkpointed`, `hybrid`).
+- **Loop configuration schema** (`templates/loop-config-schema.yaml`) — YAML schema for declaring loop behaviour in any skill's frontmatter: max-iterations, mode, verifier type (command / agent / rubric), escalation strategy, state directory, checkpoint behaviour, learning paths, and optional token budget.
+- **Loop-aware skill template** (`templates/loop-template.md`) — skeleton for building new skills that use the loop-engine protocol, complementing the existing `agent-template.md`.
+- **Loop framework diagram** (`diagrams/04-loop-framework.md`) — mermaid diagrams showing the generic loop lifecycle, escalating context flow, and how the feature-factory maps its 5 loop points to the engine.
+- **Loop guide** (`docs/loop-guide.md`) — practical documentation: when to loop (the 4-box test), how the engine works, building loop-aware skills step by step, extending for specific projects, feature-factory as case study, and cost awareness.
+
+### Changed
+
+- **`feature-factory` SKILL.md** gained a "Loop integration" section referencing the loop-engine protocol for its 5 existing retry loops (story revisions, spec revisions, backend↔frontend handoff, test failures, validator criticals). Additive only — no existing behaviour removed.
+- **Factory chain diagram** (`diagrams/01-factory-chain.md`) updated with a cross-reference to the loop framework diagram.
+- **README** updated with loop framework section, `loop-engine` in the project tree, and loop framework diagram reference.
+- **`diagrams/README.md`** updated with `04-loop-framework.md` entry.
+- **VERSION** bumped to `0.3.0`.
+
 ## [0.2.0] — 2026-06-02
 
 ### Added

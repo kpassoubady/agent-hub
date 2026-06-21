@@ -2,16 +2,19 @@
 
 A personal hub of reusable Claude Code agents, skills, and rules that work across any project.
 
-**Status:** v0.2.0 — Project auto-detection, project-shape skip logic (backend-only / frontend-only / library projects skip irrelevant builders), and escalating retry context have landed. See [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.3.0 — Generic loop framework with 3 operating modes (autonomous / checkpointed / hybrid), loop-engine skill, and feature-factory integration have landed. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's in here
 
 ```
 agents/                # one file per agent — the 7-agent factory chain
-skills/                # multi-step orchestrators (currently: feature-factory)
+skills/                # multi-step orchestrators
+  feature-factory/     #   end-to-end feature builder with 3 checkpoints
+  loop-engine/         #   generic loop protocol (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE)
 hooks/                 # reusable git hooks (currently: block-secrets)
-templates/             # skeleton for new hub agents
-diagrams/              # mermaid diagrams explaining the chain, distribution, drift loop
+templates/             # skeletons for new hub agents and loop-aware skills
+diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework
+docs/                  # guides and reference documentation
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
 sync-windsurf.sh       # Windsurf workspace sync (symlinks by default)
@@ -69,7 +72,27 @@ flowchart TD
 
 Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill. Three human checkpoints: story approval, brief approval, PR review.
 
-More diagrams — distribution model and the drift loop — under [diagrams/](diagrams/).
+More diagrams — distribution model, drift loop, and loop framework — under [diagrams/](diagrams/).
+
+## Loop framework
+
+The hub includes a generic [loop-engine](skills/loop-engine/SKILL.md) that any skill can invoke for iterative, goal-directed work. Instead of each skill re-implementing retry logic, they follow a common protocol:
+
+```
+DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE
+```
+
+The loop engine handles state tracking, escalating retry context, stop conditions, cost awareness, and three operating modes:
+
+| Mode | Behaviour |
+|---|---|
+| `autonomous` | Runs to completion or limit — no human pauses |
+| `checkpointed` | Pauses after every iteration for human review |
+| `hybrid` | Runs on success; pauses on failure or limit (default) |
+
+The [feature-factory](skills/feature-factory/SKILL.md) uses the loop engine at 5 points: story revisions, spec revisions, backend↔frontend handoff, test failure fixes, and validator critical fixes.
+
+See the [loop framework diagram](diagrams/04-loop-framework.md) for the full lifecycle and the [loop guide](docs/loop-guide.md) for practical documentation on building your own loop-aware skills.
 
 ## Installation
 
@@ -222,6 +245,7 @@ Not directly supported. Cursor uses `.cursor/rules/*.mdc` (different frontmatter
 - Run the chain against a real feature (canary).
 - Write snapshot tests per agent.
 - Add the generic dev agents — pr-reviewer, test-generator, doc-writer, refactor-tracker.
+- Build loop-aware skills beyond feature-factory — code-review loops, doc-generation loops, migration loops.
 - Add a `--target windsurf` mode (or merge `sync-windsurf.sh` into `install.sh`) if multi-tool installation becomes a frequent need.
 
 ## License

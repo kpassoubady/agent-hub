@@ -4,6 +4,8 @@ Build a feature end-to-end through specialized agents, each with a clean context
 
 > **v0.2.0** — project shape, per-feature skip logic, escalating retry context, and learning directory are reflected below.
 
+> **v0.3.0** — loop-back arrows now follow the generic [loop-engine protocol](04-loop-framework.md). See that diagram for the full lifecycle, escalating context flow, and operating modes.
+
 ```mermaid
 flowchart TD
     Config[".agenthub-config.yaml<br/>project.shape · language · framework"]
