@@ -18,6 +18,8 @@ docs/                  # guides and reference documentation
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
 sync-windsurf.sh       # Windsurf workspace sync (symlinks by default)
+sync-github-copilot.sh # GitHub Copilot workspace sync (symlinks by default)
+sync-github-copilot.ps1# PowerShell Copilot sync (Windows support)
 agent-hub-detect.sh    # Auto-generate .agenthub-config.yaml for any project
 VERSION                # hub-wide semver tag
 CHANGELOG.md           # what changed in each release
@@ -210,12 +212,17 @@ The repo ships with a pre-commit hook ([hooks/block-secrets.sh](hooks/block-secr
 The agent files double as Windsurf workflows — Windsurf only requires `description:` in frontmatter, and the Claude-specific fields (`tools`, `model`, `version`, …) are silently ignored. A separate script handles the per-workspace sync.
 
 ```bash
-# In the agent-hub directory
+# Sync to Windsurf
 ./sync-windsurf.sh                            # Sync to ./.windsurf/workflow/
 ./sync-windsurf.sh /path/to/workspace         # Sync to a specific workspace
 ./sync-windsurf.sh -f /path/to/workspace      # Force overwrite existing links
 ./sync-windsurf.sh --copy /path/to/workspace  # Copy instead of symlink
 ./sync-windsurf.sh -d                         # Dry run
+
+# Sync to GitHub Copilot
+./sync-github-copilot.sh                            # Sync to ./.github/copilot/
+./sync-github-copilot.sh /path/to/workspace         # Sync to a specific workspace
+./sync-github-copilot.ps1 -Workspace /path/to/repo  # PowerShell for Windows
 ```
 
 Default is symlink so hub updates flow into every synced workspace automatically. After sync, each agent becomes a Windsurf slash command (`/researcher`, `/spec-writer`, …) and the orchestrator becomes `/feature-factory`.
