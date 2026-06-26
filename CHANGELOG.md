@@ -2,6 +2,17 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.4.0] — 2026-06-25
+
+### Added
+
+- **GitHub Copilot workspace sync scripts** (`sync-github-copilot.sh`, `sync-github-copilot.ps1`) — sync agents and skills to GitHub Copilot workspaces under `.github/copilot/`. POSIX shell script for macOS/Linux and PowerShell script for Windows support. Follow the same pattern as `sync-windsurf.sh` (symlink by default, with force and copy options).
+
+### Changed
+
+- **README** updated with GitHub Copilot sync in project tree and usage documentation.
+- **VERSION** bumped to `0.4.0`.
+
 ## [0.3.0] — 2026-06-21
 
 ### Added
