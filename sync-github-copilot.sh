@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # sync-github-copilot.sh — sync agent-hub agents and skills into a
-# GitHub Copilot workspace. Default is symlink so hub updates flow into
-# the workspace automatically.
+# GitHub Copilot workspace, or into the user-global Copilot config.
+# Default is symlink so hub updates flow into the target automatically.
 #
-# Copilot agents live in <workspace>/.github/copilot/agents/
-# Copilot skills live in <workspace>/.github/copilot/skills/
+# Project level (default): <workspace>/.github/copilot/agents/ and skills/
+# Global level (--global):  ~/.copilot/agents/ and skills/
+#                           (override the base with COPILOT_HOME)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COPILOT_HOME="${COPILOT_HOME:-$HOME/.copilot}"
 
 # Colors
 RED='\033[0;31m'
@@ -25,23 +27,27 @@ usage() {
   echo "workspace. Default is symlink so hub updates flow in."
   echo ""
   echo -e "${BOLD}Arguments:${NC}"
-  echo "  workspace   Path to a workspace (default: current directory)."
-  echo "              Will create <workspace>/.github/copilot/ if missing."
+  echo "  workspace   Path to a project workspace (default: current directory)."
+  echo "              Ignored with --global. Targets <workspace>/.github/copilot/."
   echo ""
   echo -e "${BOLD}Options:${NC}"
+  echo "  -g, --global      Sync to the user-global Copilot config (~/.copilot)"
+  echo "                    instead of a project's .github/copilot/"
   echo "  -c, --copy        Copy files instead of symlinking"
   echo "  -f, --force       Overwrite existing files/links"
   echo "  -d, --dry-run     Show what would happen without writing"
   echo "  -h, --help        Show this help message"
   echo ""
   echo -e "${BOLD}Examples:${NC}"
-  echo "  ./sync-github-copilot.sh                            # Sync to ./.github/copilot/"
-  echo "  ./sync-github-copilot.sh /path/to/project           # Sync to a specific workspace"
-  echo "  ./sync-github-copilot.sh -f /path/to/project        # Overwrite existing links"
-  echo "  ./sync-github-copilot.sh --copy /path/to/project    # Copy instead of symlink"
+  echo "  ./sync-github-copilot.sh                            # Project: ./.github/copilot/"
+  echo "  ./sync-github-copilot.sh /path/to/project           # Project: a specific workspace"
+  echo "  ./sync-github-copilot.sh --global                   # Global:  ~/.copilot/"
+  echo "  ./sync-github-copilot.sh -g -f                      # Global, overwrite existing"
+  echo "  ./sync-github-copilot.sh --copy /path/to/project    # Project, copy instead of symlink"
   echo "  ./sync-github-copilot.sh -d                         # Dry run"
 }
 
+GLOBAL=false
 COPY=false
 FORCE=false
 DRY_RUN=false
@@ -49,6 +55,7 @@ WORKSPACE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -g|--global)  GLOBAL=true; shift ;;
     -c|--copy)    COPY=true; shift ;;
     -f|--force)   FORCE=true; shift ;;
     -d|--dry-run) DRY_RUN=true; shift ;;
@@ -60,14 +67,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-WORKSPACE_INPUT="${WORKSPACE:-$(pwd)}"
-WORKSPACE="$(cd "$WORKSPACE_INPUT" 2>/dev/null && pwd)" || {
-  echo -e "${RED}Workspace path does not exist: $WORKSPACE_INPUT${NC}" >&2
-  exit 1
-}
-
-TARGET_AGENTS="$WORKSPACE/.github/copilot/agents"
-TARGET_SKILLS="$WORKSPACE/.github/copilot/skills"
+# Resolve the sync base directory.
+if [[ "$GLOBAL" == true ]]; then
+  [[ -n "$WORKSPACE" ]] && { echo -e "${RED}A workspace path cannot be combined with --global${NC}"; exit 1; }
+  BASE_DIR="$COPILOT_HOME"
+  SCOPE_LABEL="global (~/.copilot)"
+else
+  WORKSPACE_INPUT="${WORKSPACE:-$(pwd)}"
+  WORKSPACE="$(cd "$WORKSPACE_INPUT" 2>/dev/null && pwd)" || {
+    echo -e "${RED}Workspace path does not exist: $WORKSPACE_INPUT${NC}" >&2
+    exit 1
+  }
+  BASE_DIR="$WORKSPACE/.github/copilot"
+  SCOPE_LABEL="project"
+fi
 
 # Build the source list: every agent + the feature-factory skill
 SOURCES=()
@@ -92,7 +105,7 @@ overwritten=0
 install_one() {
   local src="$1"
   local dest_rel="$2"
-  local dest="$WORKSPACE/.github/copilot/$dest_rel"
+  local dest="$BASE_DIR/$dest_rel"
   local target_dir
   target_dir="$(dirname "$dest")"
   local replacing=false
@@ -140,9 +153,9 @@ install_one() {
 
 echo ""
 echo -e "${BOLD}Agent Hub → GitHub Copilot Sync${NC}"
-echo -e "Workspace: ${CYAN}$WORKSPACE${NC}"
-echo -e "Target:    ${CYAN}$WORKSPACE/.github/copilot/${NC}"
-echo -e "Mode:      $([[ "$COPY" == true ]] && echo "copy" || echo "symlink")"
+echo -e "Scope:  ${CYAN}$SCOPE_LABEL${NC}"
+echo -e "Target: ${CYAN}$BASE_DIR/${NC}"
+echo -e "Mode:   $([[ "$COPY" == true ]] && echo "copy" || echo "symlink")"
 if [[ "$DRY_RUN" == true ]]; then
   echo -e "${YELLOW}(dry run - no files will be modified)${NC}"
 fi
