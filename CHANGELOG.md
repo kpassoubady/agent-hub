@@ -2,6 +2,27 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.5.0] — 2026-07-31
+
+### Added
+
+- **Generic graph-engine skill** (`skills/graph-engine/SKILL.md`) — a reusable multi-node orchestration protocol for skills that need more than one loop: nodes (agents/tools/checks), edges (sequential, conditional, parallel fan-out, fan-in, loop-back), a shared-state contract (`graph-state.json`), and a "reality anchor" requirement to avoid all-LLM graphs agreeing with themselves. Composes `loop-engine` for per-node retries. Maps directly onto Claude Code's native [dynamic workflows](https://code.claude.com/docs/en/workflows) (`agent()`, `parallel()`, `pipeline()`, `phase()`) when available, with a documented fallback to sequential subagent calls otherwise.
+- **Graph guide** (`docs/graph-guide.md`) — when a graph is warranted (the 4-box test), the "sequential because it has to be vs. sequential because I said so" trap (a node whose stated input is another node's live output is not parallelizable without finding the real upstream contract first), and a worked case study using feature-factory's backend/frontend step.
+- **Graph-aware skill template** (`templates/graph-template.md`) — skeleton for new skills with more than one node, covering nodes, contract, fan-in gate, reality anchor, optional configurable sequential/parallel modes, and the dynamic-workflow primitive mapping.
+- **Graph engine diagram** (`diagrams/05-graph-engine.md`) — the generic fan-out/fan-in/reality-anchor shape, and `feature-factory`'s Step 4 redrawn as an explicit graph with its sequential and parallel paths.
+- **Configurable parallel backend/frontend build** in `feature-factory` Step 4. `spec-writer`'s brief now declares `API contract confidence: high | low`; combined with the new `.agenthub-config.yaml` key `build.parallel-builders` (`auto` | `always` | `never`, default `auto`), the orchestrator decides per feature whether backend-builder and frontend-builder build concurrently against the brief's API section (the contract) or sequentially with frontend consuming backend's actual summary. A new fan-in **contract-check** gate (`04b-contract-check.md`) reconciles the brief's promise against both builders' actual output in parallel mode, routing mismatches back through the existing loop-back path (max 3 round trips, unchanged).
+
+### Changed
+
+- **`spec-writer.md`** (1.1.0 → 1.2.0) gained the `API contract confidence` output section and guidance that a wrong `high` call costs a reconciliation round trip — default to `low` when in doubt.
+- **`frontend-builder.md`** (1.0.0 → 1.1.0) now supports two contract sources: backend-builder's summary (sequential mode, unchanged) or the brief's API section directly (parallel mode). Reports which source it used so the orchestrator's fan-in gate knows what to diff against.
+- **`backend-builder.md`** (1.0.0 → 1.1.0) gained a failure mode for parallel mode: flag brief ambiguity explicitly rather than silently guessing, since there's no live frontend feedback loop to catch it mid-build.
+- **`feature-factory` SKILL.md** (1.2.0 → 1.3.0) Step 4 rewritten with the sequential/parallel decision table, a "Graph integration" section referencing `graph-engine`, an updated Loop point 3 covering both the sequential handoff loop and the new parallel contract-check loop, and the state file list updated with `04b-contract-check.md` and `graph-state.json`.
+- **README** gained a "Graph framework" section (mirroring the existing "Loop framework" section), `graph-engine` in the project tree, the `build.parallel-builders` config key in the schema example, and a Windsurf compatibility note that parallel fan-out requires Claude Code dynamic workflows and falls back to sequential in Windsurf.
+- **`CLAUDE.md`** repository layout and config schema sections updated to include `graph-engine`, `graph-guide.md`, `graph-template.md`, and `build.parallel-builders`.
+- **`diagrams/README.md`** updated with `05-graph-engine.md` entry.
+- **VERSION** bumped to `0.5.0`.
+
 ## [0.4.0] — 2026-06-25
 
 ### Added

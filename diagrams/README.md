@@ -8,6 +8,7 @@ Visual explanations of how the agent hub works. All diagrams use [Mermaid](https
 | [02-distribution.md](02-distribution.md) | How a single hub feeds Claude Code (global install) and Windsurf (per-workspace sync) |
 | [03-drift-loop.md](03-drift-loop.md) | How real-project surprises become hub improvements that benefit every consuming project |
 | [04-loop-framework.md](04-loop-framework.md) | The generic loop lifecycle: 5 phases, 3 operating modes, escalating context, and state persistence |
+| [05-graph-engine.md](05-graph-engine.md) | The generic graph structure (fan-out, fan-in, reality anchor) and feature-factory's backend/frontend step redrawn as an explicit graph |
 
 ## Editing
 

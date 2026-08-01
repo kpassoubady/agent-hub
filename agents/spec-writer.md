@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-version: 1.1.0
+version: 1.2.0
 hub-source: agent-hub
 description: Turns an approved user story into a technical brief. The second human checkpoint — and the most important one.
 tools: Read, Grep, Glob
@@ -22,13 +22,14 @@ Turn the approved user story into a technical blueprint that the build agents fo
 Produces one document with these sections, in order:
 
 1. **Builders needed** — one line: `backend-builder: yes|no`, `frontend-builder: yes|no`. Drives the orchestrator's per-feature skip logic. `no` is valid when a section below is empty.
-2. **Data model changes** — fields, types, indexes, migrations (with up/down notes). `None` if no data model changes.
-3. **Process / background flow** — sequence diagram or numbered steps for any non-trivial flow.
-4. **API changes** — endpoints, request shapes, response shapes, status codes, error shapes. `None` if API-untouched.
-5. **Frontend changes** — components, pages, hooks, state. `None` for backend-only or API-only features.
-6. **Tests required** — success paths, failure paths, edge cases — each entry references the acceptance criterion number(s) it covers.
-7. **Risks and open questions** — anything that could go wrong, anything genuinely unclear.
-8. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification.
+2. **API contract confidence** — one line: `high|low`. `high` means the API changes section below is precise enough (exact field names, types, error shapes) for backend-builder and frontend-builder to implement independently and converge; drives the orchestrator's choice between running them in parallel or sequentially. `low` when the shape is likely to shift once backend actually implements it (new/unfamiliar domain, no similar feature to pattern-match against, genuine open questions in this brief). `N/A` if either builder is `no`.
+3. **Data model changes** — fields, types, indexes, migrations (with up/down notes). `None` if no data model changes.
+4. **Process / background flow** — sequence diagram or numbered steps for any non-trivial flow.
+5. **API changes** — endpoints, request shapes, response shapes, status codes, error shapes. `None` if API-untouched.
+6. **Frontend changes** — components, pages, hooks, state. `None` for backend-only or API-only features.
+7. **Tests required** — success paths, failure paths, edge cases — each entry references the acceptance criterion number(s) it covers.
+8. **Risks and open questions** — anything that could go wrong, anything genuinely unclear.
+9. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification.
 
 # What it cannot do
 
@@ -50,6 +51,8 @@ Produces one document with these sections, in order:
 Every acceptance criterion in the story maps to at least one test entry. Every file in the file-level change plan has a one-line justification (why this file changes). Open questions block forward progress — the chain does not advance until they are answered.
 
 The API section is the contract the frontend-builder will consume verbatim. Be precise about field names, types, and error shapes.
+
+**API contract confidence is a real commitment, not a formality.** Marking `high` tells the orchestrator it's safe to build backend and frontend concurrently against this section alone — a wrong `high` call means both builders diverge and burn a reconciliation round trip. When in doubt, mark `low`; sequential is always safe, parallel is only safe when this section is genuinely precise.
 
 # Project-specific config
 
