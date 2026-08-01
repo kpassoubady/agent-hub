@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# sync-windsurf.sh — sync agent-hub agents and the feature-factory skill into a
-# Windsurf workspace as workflows. Default is symlink so hub updates flow into
+# sync-devin.sh — sync agent-hub agents and the feature-factory skill into a
+# Devin workspace as workflows. Default is symlink so hub updates flow into
 # the workspace automatically.
 #
-# Windsurf workflows live in <workspace>/.windsurf/workflow/ and require only a
+# Devin workflows live in <workspace>/.devin/workflows/ and require only a
 # `description:` field in frontmatter. The Claude-specific frontmatter on the
-# agent files (tools, model, version, ...) is ignored by Windsurf.
+# agent files (tools, model, version, ...) is ignored by Devin.
+#
+# Legacy `.windsurf/workflow/` directories still work in Devin Desktop and are
+# left untouched if they already exist; new syncs use `.devin/workflows/.
 
 set -euo pipefail
 
@@ -20,14 +23,14 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 usage() {
-  echo -e "${BOLD}Usage:${NC} ./sync-windsurf.sh [options] [workspace]"
+  echo -e "${BOLD}Usage:${NC} ./sync-devin.sh [options] [workspace]"
   echo ""
-  echo "Sync agent-hub agents and the feature-factory skill into a Windsurf"
+  echo "Sync agent-hub agents and the feature-factory skill into a Devin"
   echo "workspace as workflows. Default is symlink so hub updates flow in."
   echo ""
   echo -e "${BOLD}Arguments:${NC}"
-  echo "  workspace   Path to a Windsurf workspace (default: current directory)."
-  echo "              Will create <workspace>/.windsurf/workflow/ if missing."
+  echo "  workspace   Path to a Devin workspace (default: current directory)."
+  echo "              Will create <workspace>/.devin/workflows/ if missing."
   echo ""
   echo -e "${BOLD}Options:${NC}"
   echo "  -c, --copy        Copy files instead of symlinking"
@@ -36,11 +39,11 @@ usage() {
   echo "  -h, --help        Show this help message"
   echo ""
   echo -e "${BOLD}Examples:${NC}"
-  echo "  ./sync-windsurf.sh                            # Sync to ./.windsurf/workflow/"
-  echo "  ./sync-windsurf.sh /path/to/project           # Sync to a specific workspace"
-  echo "  ./sync-windsurf.sh -f /path/to/project        # Overwrite existing links"
-  echo "  ./sync-windsurf.sh --copy /path/to/project    # Copy instead of symlink"
-  echo "  ./sync-windsurf.sh -d                         # Dry run"
+  echo "  ./sync-devin.sh                            # Sync to ./.devin/workflows/"
+  echo "  ./sync-devin.sh /path/to/project           # Sync to a specific workspace"
+  echo "  ./sync-devin.sh -f /path/to/project        # Overwrite existing links"
+  echo "  ./sync-devin.sh --copy /path/to/project    # Copy instead of symlink"
+  echo "  ./sync-devin.sh -d                         # Dry run"
 }
 
 COPY=false
@@ -68,7 +71,7 @@ WORKSPACE="$(cd "$WORKSPACE_INPUT" 2>/dev/null && pwd)" || {
   exit 1
 }
 
-TARGET="$WORKSPACE/.windsurf/workflow"
+TARGET="$WORKSPACE/.devin/workflows"
 
 # Build the source list: every agent + the orchestrator skill (renamed).
 SOURCES=()
@@ -138,7 +141,7 @@ install_one() {
 }
 
 echo ""
-echo -e "${BOLD}Agent Hub → Windsurf Sync${NC}"
+echo -e "${BOLD}Agent Hub → Devin Sync${NC}"
 echo -e "Workspace: ${CYAN}$WORKSPACE${NC}"
 echo -e "Target:    ${CYAN}$TARGET${NC}"
 echo -e "Mode:      $([[ "$COPY" == true ]] && echo "copy" || echo "symlink")"

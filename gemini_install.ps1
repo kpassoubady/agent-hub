@@ -1,32 +1,20 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Agent Hub installer for Windows, macOS, and Linux (PowerShell).
+    Agent Hub installer for Gemini / Antigravity IDE.
 
 .DESCRIPTION
-    Installs agent-hub modules (agents, skills, templates, hooks) into
-    $env:USERPROFILE\.claude on Windows or $env:HOME/.claude elsewhere
-    (or a path given via -Path).
+    Installs agent-hub modules into
+    $env:USERPROFILE\.gemini\config\plugins\agent-hub (or a path given via -Path).
+    Writes a plugin.json manifest.
 
 .EXAMPLE
-    .\install.ps1
-    Install all modules to ~/.claude.
+    .\gemini_install.ps1
+    Install all modules to the default Gemini plugin directory.
 
 .EXAMPLE
-    .\install.ps1 agents skills
-    Install only the agents and skills modules.
-
-.EXAMPLE
-    .\install.ps1 -Force agents
-    Force overwrite of existing agent files.
-
-.EXAMPLE
-    .\install.ps1 -DryRun
-    Show what would happen without writing anything.
-
-.EXAMPLE
-    .\install.ps1 -Path C:\proj\.claude
-    Install into a specific project's .claude directory.
+    .\gemini_install.ps1 agents
+    Install only the agents module.
 #>
 [CmdletBinding()]
 param(
@@ -52,16 +40,17 @@ $UserHome =
     if ($env:USERPROFILE) { $env:USERPROFILE }
     else { $env:HOME }
 
-$ClaudeHome =
+$GeminiHome =
     if ($Path) { $Path }
-    elseif ($env:CLAUDE_HOME) { $env:CLAUDE_HOME }
-    else { Join-Path $UserHome '.claude' }
+    elseif ($env:GEMINI_HOME) { $env:GEMINI_HOME }
+    else { Join-Path $UserHome '.gemini' }
 
-$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$PluginDir = Join-Path $GeminiHome 'config\plugins\agent-hub'
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $AllModules = @('agents', 'skills', 'templates', 'hooks')
 
 function Show-Usage {
-    Write-Host "Usage: .\install.ps1 [options] [modules...]"
+    Write-Host "Usage: .\gemini_install.ps1 [options] [modules...]"
     Write-Host ""
     Write-Host "Modules: agents skills templates hooks"
     Write-Host "  If no modules specified, all available modules are installed."
@@ -69,15 +58,14 @@ function Show-Usage {
     Write-Host "Options:"
     Write-Host "  -Force          Overwrite existing files (default: skip)"
     Write-Host "  -DryRun         Show what would be installed without copying"
-    Write-Host "  -Path PATH      Install into PATH instead of `$env:USERPROFILE\.claude"
+    Write-Host "  -Path PATH      Install into PATH instead of `$env:USERPROFILE\.gemini"
     Write-Host "  -Help           Show this help message"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\install.ps1"
-    Write-Host "  .\install.ps1 agents"
-    Write-Host "  .\install.ps1 -Force agents skills"
-    Write-Host "  .\install.ps1 -DryRun"
-    Write-Host "  .\install.ps1 -Path C:\proj\.claude"
+    Write-Host "  .\gemini_install.ps1"
+    Write-Host "  .\gemini_install.ps1 agents"
+    Write-Host "  .\gemini_install.ps1 -Force agents skills"
+    Write-Host "  .\gemini_install.ps1 -DryRun"
 }
 
 if ($Help) { Show-Usage; exit 0 }
@@ -97,8 +85,8 @@ foreach ($mod in $Modules) {
     }
 }
 
-$script:Copied      = 0
-$script:Skipped     = 0
+$script:Copied = 0
+$script:Skipped = 0
 $script:Overwritten = 0
 
 function Install-File {
@@ -146,9 +134,29 @@ function Install-File {
 }
 
 Write-Host ""
-Write-Host "Agent Hub Installer"
-Write-Host "Target: $ClaudeHome" -ForegroundColor Cyan
+Write-Host "Agent Hub -> Gemini/Antigravity Installer"
+Write-Host "Target: $PluginDir" -ForegroundColor Cyan
 if ($DryRun) { Write-Host "(dry run - no files will be modified)" -ForegroundColor Yellow }
+Write-Host ""
+
+$PluginJsonPath = Join-Path $PluginDir 'plugin.json'
+$PluginJson = @'
+{
+  "name": "agent-hub",
+  "description": "Reusable Claude Code agents, skills, and templates adapted for Gemini/Antigravity"
+}
+'@
+
+if (-not $DryRun) {
+    if (-not (Test-Path $PluginDir)) {
+        New-Item -ItemType Directory -Path $PluginDir -Force | Out-Null
+    }
+    Set-Content -Path $PluginJsonPath -Value $PluginJson -NoNewline
+    Write-Host "  [write] $PluginJsonPath" -ForegroundColor Green
+}
+else {
+    Write-Host "  [write] $PluginJsonPath" -ForegroundColor Green
+}
 Write-Host ""
 
 foreach ($mod in $Modules) {
@@ -159,7 +167,7 @@ foreach ($mod in $Modules) {
 
     Get-ChildItem -Path $modDir -File -Recurse | ForEach-Object {
         $relPath = $_.FullName.Substring($modDir.Length).TrimStart('\', '/')
-        $dest    = Join-Path (Join-Path $ClaudeHome $mod) $relPath
+        $dest = Join-Path (Join-Path $PluginDir $mod) $relPath
         Install-File -Source $_.FullName -Destination $dest
     }
 

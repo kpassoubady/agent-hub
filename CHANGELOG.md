@@ -2,6 +2,24 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.6.0] — 2026-08-01
+
+### Added
+
+- **`install_all.sh` / `install_all.ps1`** — one command to install/sync Agent Hub into Claude Code, Gemini/Antigravity, Devin, and GitHub Copilot at once.
+- **`gemini_install.sh` / `gemini_install.ps1`** — install agents, skills, templates, and hooks as a Gemini/Antigravity plugin under `~/.gemini/config/plugins/agent-hub/`, including a `plugin.json` manifest.
+- **`claude_install.sh` / `claude_install.ps1`** — convenience wrappers around the existing `install.sh` / `install.ps1` for users familiar with the personal-helper naming.
+- **`devin_install.sh` / `devin_install.ps1`** — convenience wrappers around `sync-devin.sh` / `sync-devin.ps1`.
+- **`sync-devin.ps1`** — Windows PowerShell workspace sync for Devin.
+- **`-Global` support in `sync-github-copilot.ps1`** — sync GitHub Copilot agents and skills to `~/.copilot/` on Windows, matching the `--global` flag in `sync-github-copilot.sh`.
+
+### Changed
+
+- **Windsurf is now Devin.** `sync-windsurf.sh` has been renamed to `sync-devin.sh` and now targets `.devin/workflows/` (the Devin Desktop preferred location). `.windsurf/workflow/` directories still work as a legacy fallback in Devin Desktop and are left untouched.
+- **README** updated with the new multi-tool installer list, `install_all` usage, a per-tool installer table, and the renamed Devin sync section.
+- **CLAUDE.md** repository layout and installation examples updated to list all new scripts.
+- **VERSION** bumped to `0.6.0`.
+
 ## [0.5.0] — 2026-07-31
 
 ### Added
@@ -18,7 +36,7 @@ All notable changes to this hub are recorded here. Hub follows semver; each agen
 - **`frontend-builder.md`** (1.0.0 → 1.1.0) now supports two contract sources: backend-builder's summary (sequential mode, unchanged) or the brief's API section directly (parallel mode). Reports which source it used so the orchestrator's fan-in gate knows what to diff against.
 - **`backend-builder.md`** (1.0.0 → 1.1.0) gained a failure mode for parallel mode: flag brief ambiguity explicitly rather than silently guessing, since there's no live frontend feedback loop to catch it mid-build.
 - **`feature-factory` SKILL.md** (1.2.0 → 1.3.0) Step 4 rewritten with the sequential/parallel decision table, a "Graph integration" section referencing `graph-engine`, an updated Loop point 3 covering both the sequential handoff loop and the new parallel contract-check loop, and the state file list updated with `04b-contract-check.md` and `graph-state.json`.
-- **README** gained a "Graph framework" section (mirroring the existing "Loop framework" section), `graph-engine` in the project tree, the `build.parallel-builders` config key in the schema example, and a Windsurf compatibility note that parallel fan-out requires Claude Code dynamic workflows and falls back to sequential in Windsurf.
+- **README** gained a "Graph framework" section (mirroring the existing "Loop framework" section), `graph-engine` in the project tree, the `build.parallel-builders` config key in the schema example, and a Devin compatibility note that parallel fan-out requires Claude Code dynamic workflows and falls back to sequential in Devin (formerly Windsurf).
 - **`CLAUDE.md`** repository layout and config schema sections updated to include `graph-engine`, `graph-guide.md`, `graph-template.md`, and `build.parallel-builders`.
 - **`diagrams/README.md`** updated with `05-graph-engine.md` entry.
 - **VERSION** bumped to `0.5.0`.
@@ -27,7 +45,7 @@ All notable changes to this hub are recorded here. Hub follows semver; each agen
 
 ### Added
 
-- **GitHub Copilot workspace sync scripts** (`sync-github-copilot.sh`, `sync-github-copilot.ps1`) — sync agents and skills to GitHub Copilot workspaces under `.github/copilot/`. POSIX shell script for macOS/Linux and PowerShell script for Windows support. Follow the same pattern as `sync-windsurf.sh` (symlink by default, with force and copy options).
+- **GitHub Copilot workspace sync scripts** (`sync-github-copilot.sh`, `sync-github-copilot.ps1`) — sync agents and skills to GitHub Copilot workspaces under `.github/copilot/`. POSIX shell script for macOS/Linux and PowerShell script for Windows support. Follow the same pattern as `sync-devin.sh` (symlink by default, with force and copy options).
 
 ### Changed
 
@@ -87,7 +105,7 @@ Existing projects on v0.1 don't have `project.shape` in their config. The orches
 - 7-agent factory chain: `researcher`, `story-writer`, `spec-writer`, `backend-builder`, `frontend-builder`, `test-verifier`, `validator`.
 - `feature-factory` orchestrator skill with three human checkpoints (story, brief, PR).
 - `install.sh` / `install.ps1` — Claude Code installer (copies modules to `~/.claude/`).
-- `sync-windsurf.sh` — Windsurf workspace sync (symlinks by default).
+- `sync-devin.sh` — Devin workspace sync (symlinks by default; formerly Windsurf).
 - `hooks/block-secrets.sh` — pre-commit secret blocker.
 - `diagrams/` — mermaid diagrams for factory chain, distribution, drift loop.
 - Repository structure: `agents/`, `skills/`, `hooks/`, `templates/`, `diagrams/`.

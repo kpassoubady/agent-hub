@@ -101,7 +101,7 @@ Where available, prefer running a fan-out as a native [Claude Code dynamic workf
 | Same transform across many items | `pipeline(items, fn)` |
 | Progress grouping | `phase(title)` |
 
-If dynamic workflows aren't available (older Claude Code version, or another host like Windsurf), fall back to running fan-out nodes as sequential subagent calls with an explicit note that true concurrency isn't available in this environment — the graph structure (contract-first inputs, fan-in reconciliation, reality anchors) stays identical either way. Orchestration logic itself costs no model tokens under dynamic workflows; hand-simulated fan-out does not have that property, so treat it as a portability fallback, not the default.
+If dynamic workflows aren't available (older Claude Code version, or another host like Devin), fall back to running fan-out nodes as sequential subagent calls with an explicit note that true concurrency isn't available in this environment — the graph structure (contract-first inputs, fan-in reconciliation, reality anchors) stays identical either way. Orchestration logic itself costs no model tokens under dynamic workflows; hand-simulated fan-out does not have that property, so treat it as a portability fallback, not the default.
 
 ## State tracking
 

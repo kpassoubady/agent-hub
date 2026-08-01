@@ -1,18 +1,14 @@
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Sync agent-hub agents and skills into a GitHub Copilot workspace or the global Copilot config.
+    Sync agent-hub agents and the feature-factory skill into a Devin workspace.
 
 .DESCRIPTION
     Creates symlinks (or copies) of agent-hub agents and the feature-factory skill
-    into a target Copilot workspace under .github/copilot/, or into the user-global
-    Copilot config under ~/.copilot/ when -Global is used.
+    into a target Devin workspace under .devin/workflows/.
 
 .PARAMETER Workspace
-    Path to the target Copilot workspace. Defaults to the current directory.
-    Ignored when -Global is used.
-
-.PARAMETER Global
-    Sync to the user-global Copilot config (~/.copilot) instead of a workspace.
+    Path to the target Devin workspace. Defaults to the current directory.
 
 .PARAMETER Copy
     Copy files instead of creating symbolic links.
@@ -24,24 +20,17 @@
     Show what would be installed without modifying any files.
 
 .EXAMPLE
-    .\sync-github-copilot.ps1
-    Syncs agents to .github\copilot\ in the current directory.
+    .\sync-devin.ps1
+    Syncs agents to .devin\workflows in the current directory.
 
 .EXAMPLE
-    .\sync-github-copilot.ps1 -Workspace "C:\projects\myapp" -Force
-
-.EXAMPLE
-    .\sync-github-copilot.ps1 -Global
-    Syncs agents to ~/.copilot globally.
+    .\sync-devin.ps1 -Workspace "C:\projects\myapp" -Force
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false, Position = 0)]
     [string]$Workspace = "",
-
-    [Parameter(Mandatory = $false)]
-    [switch]$Global,
 
     [Parameter(Mandatory = $false)]
     [switch]$Copy,
@@ -57,46 +46,27 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$UserHome =
-    if ($env:USERPROFILE) { $env:USERPROFILE }
-    else { $env:HOME }
-
-$CopilotHome =
-    if ($env:COPILOT_HOME) { $env:COPILOT_HOME }
-    else { Join-Path $UserHome '.copilot' }
-
-if ($Global) {
-    if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
-        Write-Host "Error: -Global cannot be combined with a workspace path." -ForegroundColor Red
-        exit 1
-    }
-    $TargetBase = $CopilotHome
-    $ScopeLabel = "global (~/.copilot)"
+if ([string]::IsNullOrWhiteSpace($Workspace)) {
+    $Workspace = (Get-Location).Path
 }
 else {
-    if ([string]::IsNullOrWhiteSpace($Workspace)) {
-        $Workspace = (Get-Location).Path
+    if (-not (Test-Path $Workspace -PathType Container)) {
+        Write-Host "Error: Workspace path does not exist: $Workspace" -ForegroundColor Red
+        exit 1
     }
-    else {
-        if (-not (Test-Path $Workspace -PathType Container)) {
-            Write-Host "Error: Workspace path does not exist: $Workspace" -ForegroundColor Red
-            exit 1
-        }
-        $Workspace = (Resolve-Path $Workspace).Path
-    }
-    $TargetBase = Join-Path $Workspace ".github\copilot"
-    $ScopeLabel = "project"
+    $Workspace = (Resolve-Path $Workspace).Path
 }
 
-# Build source list
+$Target = Join-Path $Workspace ".devin\workflows"
+
 $Sources = @()
 
 $AgentsDir = Join-Path $ScriptDir "agents"
 if (Test-Path $AgentsDir) {
     Get-ChildItem -Path $AgentsDir -Filter "*.md" -File | ForEach-Object {
         $Sources += @{
-            Source = $_.FullName
-            DestRel = "agents\$($_.Name)"
+            Source   = $_.FullName
+            DestName = $_.Name
         }
     }
 }
@@ -104,8 +74,8 @@ if (Test-Path $AgentsDir) {
 $FeatureFactorySkill = Join-Path $ScriptDir "skills\feature-factory\SKILL.md"
 if (Test-Path $FeatureFactorySkill) {
     $Sources += @{
-        Source = $FeatureFactorySkill
-        DestRel = "skills\feature-factory\SKILL.md"
+        Source   = $FeatureFactorySkill
+        DestName = "feature-factory.md"
     }
 }
 
@@ -126,16 +96,16 @@ function Write-Status {
 }
 
 function Install-One {
-    param([string]$Source, [string]$DestRel)
+    param([string]$Source, [string]$DestName)
 
-    $Dest = Join-Path $TargetBase $DestRel
-    $DestDir = Split-Path -Parent $Dest
+    $Dest = Join-Path $Target $DestName
     $Replacing = $false
 
     if (Test-Path $Dest -ErrorAction SilentlyContinue) {
         if ($Force) {
             $Replacing = $true
-        } else {
+        }
+        else {
             Write-Status "skip" "$Dest (already exists; use -Force to overwrite)" "Cyan"
             $Script:Skipped++
             return
@@ -146,9 +116,10 @@ function Install-One {
         if ($DryRun) {
             if ($Replacing) { Write-Status "overwrite-copy" $Dest "Yellow" }
             else { Write-Status "copy" $Dest "Green" }
-        } else {
-            if (-not (Test-Path $DestDir)) {
-                New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+        }
+        else {
+            if (-not (Test-Path $Target)) {
+                New-Item -ItemType Directory -Path $Target -Force | Out-Null
             }
             if ($Replacing) { Remove-Item -Path $Dest -Force }
             Copy-Item -Path $Source -Destination $Dest
@@ -156,21 +127,23 @@ function Install-One {
             else { Write-Status "copy" $Dest "Green" }
         }
         if ($Replacing) { $Script:Overwritten++ } else { $Script:Copied++ }
-    } else {
+    }
+    else {
         if ($DryRun) {
             if ($Replacing) { Write-Status "overwrite-link" "$Dest -> $Source" "Yellow" }
             else { Write-Status "link" "$Dest -> $Source" "Green" }
-        } else {
-            if (-not (Test-Path $DestDir)) {
-                New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+        }
+        else {
+            if (-not (Test-Path $Target)) {
+                New-Item -ItemType Directory -Path $Target -Force | Out-Null
             }
             if ($Replacing) { Remove-Item -Path $Dest -Force }
-            # Creating symlink requires admin privileges on some Windows versions unless developer mode is enabled
             try {
                 New-Item -ItemType SymbolicLink -Path $Dest -Target $Source | Out-Null
                 if ($Replacing) { Write-Status "overwrite-link" "$Dest -> $Source" "Yellow" }
                 else { Write-Status "link" "$Dest -> $Source" "Green" }
-            } catch {
+            }
+            catch {
                 Write-Host "Failed to create symlink. This may require Developer Mode or Administrator privileges on Windows. Use -Copy instead." -ForegroundColor Red
                 throw $_
             }
@@ -180,26 +153,24 @@ function Install-One {
 }
 
 Write-Host ""
-Write-Host "Agent Hub -> GitHub Copilot Sync" -ForegroundColor White
-if (-not $Global) {
-    Write-Host "Workspace: " -NoNewline; Write-Host $Workspace -ForegroundColor Cyan
-}
-Write-Host "Scope:     " -NoNewline; Write-Host $ScopeLabel -ForegroundColor Cyan
-Write-Host "Target:    " -NoNewline; Write-Host $TargetBase -ForegroundColor Cyan
+Write-Host "Agent Hub -> Devin Sync" -ForegroundColor White
+Write-Host "Workspace: " -NoNewline; Write-Host $Workspace -ForegroundColor Cyan
+Write-Host "Target:    " -NoNewline; Write-Host $Target -ForegroundColor Cyan
 Write-Host "Mode:      " -NoNewline
 if ($Copy) { Write-Host "copy" } else { Write-Host "symlink" }
 if ($DryRun) { Write-Host "(dry run - no files will be modified)" -ForegroundColor Yellow }
 Write-Host ""
 
 foreach ($entry in $Sources) {
-    Install-One -Source $entry.Source -DestRel $entry.DestRel
+    Install-One -Source $entry.Source -DestName $entry.DestName
 }
 
 Write-Host ""
 Write-Host "Done. " -ForegroundColor White -NoNewline
 if ($Copy) {
     Write-Host "$Script:Copied copied" -ForegroundColor Green -NoNewline
-} else {
+}
+else {
     Write-Host "$Script:Linked linked" -ForegroundColor Green -NoNewline
 }
 Write-Host ", " -NoNewline
