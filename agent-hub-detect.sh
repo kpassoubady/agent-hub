@@ -472,5 +472,5 @@ else
   echo "" >&2
   echo -e "${BOLD}Next steps:${NC}" >&2
   echo "  1. Review the config and adjust folder/command lists if needed." >&2
-  echo "  2. In Claude Code or Windsurf, run: /feature-factory <feature description>" >&2
+  echo "  2. In Claude Code or Devin, run: /feature-factory <feature description>" >&2
 fi

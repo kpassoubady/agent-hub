@@ -10,7 +10,7 @@ flowchart LR
     Surprise[Agent surprises you<br/>missed pattern · weak finding · wrong assumption]
     Diagnose{Would a hub fix<br/>have prevented it?}
     Fix[Fix in hub<br/>bump agent version<br/>update CHANGELOG]
-    Propagate[Re-sync<br/>install.sh --force<br/>sync-windsurf.sh --force]
+    Propagate[Re-sync<br/>install.sh --force<br/>sync-devin.sh --force]
     Others[Every other project<br/>inherits the improvement]
 
     Use --> Surprise
@@ -39,7 +39,7 @@ flowchart LR
 1. An agent surprises you in a real project — missed a pattern, weak finding, broken assumption.
 2. Diagnose root cause: would a fix in the hub have prevented it?
 3. If yes → apply the fix in the hub, bump the agent's `version:` in frontmatter, update the CHANGELOG.
-4. Propagate with `./install.sh --force` (Claude Code) or `./sync-windsurf.sh --force` (Windsurf). Symlinked Windsurf workspaces inherit the fix automatically.
+4. Propagate with `./install.sh --force` (Claude Code) or `./sync-devin.sh --force` (Devin). Symlinked Devin workspaces inherit the fix automatically.
 5. Every other project inherits the improvement on its next sync.
 
 ## Two feedback loops

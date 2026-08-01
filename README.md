@@ -18,9 +18,18 @@ diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop
 docs/                  # guides and reference documentation
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
-sync-windsurf.sh       # Windsurf workspace sync (symlinks by default)
-sync-github-copilot.sh # GitHub Copilot workspace sync (symlinks by default)
-sync-github-copilot.ps1# PowerShell Copilot sync (Windows support)
+claude_install.sh      # alias for install.sh (matches personal-helper naming)
+claude_install.ps1     # alias for install.ps1
+gemini_install.sh      # Gemini / Antigravity plugin installer
+gemini_install.ps1     # Gemini / Antigravity plugin installer (Windows)
+devin_install.sh       # Devin workspace sync wrapper (delegates to sync-devin.sh)
+devin_install.ps1      # Devin workspace sync wrapper (Windows)
+sync-devin.sh          # Devin workspace sync (symlinks by default)
+sync-devin.ps1         # Devin workspace sync (Windows)
+sync-github-copilot.sh # GitHub Copilot workspace/global sync (symlinks by default)
+sync-github-copilot.ps1# PowerShell Copilot sync (Windows support, now with -Global)
+install_all.sh         # run all installers at once
+install_all.ps1        # run all installers at once (Windows)
 agent-hub-detect.sh    # Auto-generate .agenthub-config.yaml for any project
 VERSION                # hub-wide semver tag
 CHANGELOG.md           # what changed in each release
@@ -114,7 +123,7 @@ Clone the repo and run the installer for your OS.
 ```bash
 git clone https://github.com/kpassoubady/agent-hub.git
 cd agent-hub
-./install.sh
+./install_all.sh
 ```
 
 **Windows (PowerShell):**
@@ -122,10 +131,26 @@ cd agent-hub
 ```powershell
 git clone https://github.com/kpassoubady/agent-hub.git
 cd agent-hub
-.\install.ps1
+.\install_all.ps1
 ```
 
-Both installers copy modules to `~/.claude/` (the global Claude Code config) so the agents are available across every project. Re-running is safe — existing files are skipped unless you pass `--force`.
+`install_all` sets up every supported assistant in one command:
+
+- **Claude Code** — global `~/.claude/` (via `./install.sh`)
+- **Gemini / Antigravity** — global `~/.gemini/config/plugins/agent-hub/` (via `./gemini_install.sh`)
+- **Devin** — per-workspace `.devin/workflows/` (via `./sync-devin.sh`)
+- **GitHub Copilot** — per-workspace `.github/copilot/` (via `./sync-github-copilot.sh`)
+
+Run `install_all` from a project workspace to sync Devin and Copilot there, or run each installer separately for finer control.
+
+### Per-tool installers
+
+| Tool | macOS / Linux / git-bash | Windows PowerShell |
+|---|---|---|
+| Claude Code | `./install.sh` or `./claude_install.sh` | `.\install.ps1` or `.\claude_install.ps1` |
+| Gemini / Antigravity | `./gemini_install.sh` | `.\gemini_install.ps1` |
+| Devin | `./devin_install.sh` or `./sync-devin.sh` | `.\devin_install.ps1` or `.\sync-devin.ps1` |
+| GitHub Copilot | `./sync-github-copilot.sh` | `.\sync-github-copilot.ps1` |
 
 ### Common flags
 
@@ -135,7 +160,8 @@ Both installers copy modules to `~/.claude/` (the global Claude Code config) so 
 | `agents skills` | Install only the listed modules |
 | `-f` / `--force` (sh) or `-Force` (ps1) | Overwrite existing files |
 | `-d` / `--dry-run` (sh) or `-DryRun` (ps1) | Show what would happen without writing |
-| `-p PATH` (sh) or `-Path PATH` (ps1) | Per-project install: target `<project>/.claude` instead of `~/.claude` |
+| `-p PATH` (sh) or `-Path PATH` (ps1) | Per-project install: target `<project>/.claude` or `<project>/.gemini` instead of the global config |
+| `-g` / `--global` (sh) or `-Global` (ps1) | Install GitHub Copilot globally (`~/.copilot`) instead of the workspace |
 | `-h` / `--help` (sh) or `-Help` (ps1) | Show help |
 
 ### Verifying the install
@@ -143,6 +169,8 @@ Both installers copy modules to `~/.claude/` (the global Claude Code config) so 
 After `./install.sh`, in Claude Code: `/feature-factory <feature description>` should launch the orchestrator.
 
 The 7 agents land in `~/.claude/agents/`, the skill in `~/.claude/skills/feature-factory/`, the pre-commit hook in `~/.claude/hooks/block-secrets.sh` (ready to symlink into a project's `.git/hooks/`).
+
+After `./sync-devin.sh`, in Devin: `/feature-factory <feature description>` should launch the orchestrator, and `/researcher`, `/spec-writer`, etc. are available as slash commands.
 
 ## Project-specific configuration
 
@@ -222,34 +250,36 @@ If something tempts you to put private content here, that's the sorting rule tel
 
 The repo ships with a pre-commit hook ([hooks/block-secrets.sh](hooks/block-secrets.sh)) that refuses to commit common secret files and patterns — install it in any project that consumes the hub.
 
-## Use with Windsurf
+## Use with Devin
 
-The agent files double as Windsurf workflows — Windsurf only requires `description:` in frontmatter, and the Claude-specific fields (`tools`, `model`, `version`, …) are silently ignored. A separate script handles the per-workspace sync.
+The agent files double as Devin workflows — Devin only requires `description:` in frontmatter, and the Claude-specific fields (`tools`, `model`, `version`, …) are silently ignored. A separate script handles the per-workspace sync.
 
 ```bash
-# Sync to Windsurf
-./sync-windsurf.sh                            # Sync to ./.windsurf/workflow/
-./sync-windsurf.sh /path/to/workspace         # Sync to a specific workspace
-./sync-windsurf.sh -f /path/to/workspace      # Force overwrite existing links
-./sync-windsurf.sh --copy /path/to/workspace  # Copy instead of symlink
-./sync-windsurf.sh -d                         # Dry run
+# Sync to Devin
+./sync-devin.sh                            # Sync to ./.devin/workflows/
+./sync-devin.sh /path/to/workspace         # Sync to a specific workspace
+./sync-devin.sh -f /path/to/workspace      # Force overwrite existing links
+./sync-devin.sh --copy /path/to/workspace  # Copy instead of symlink
+./sync-devin.sh -d                         # Dry run
 
 # Sync to GitHub Copilot
 ./sync-github-copilot.sh                            # Sync to ./.github/copilot/
 ./sync-github-copilot.sh /path/to/workspace         # Sync to a specific workspace
+./sync-github-copilot.sh --global                   # Sync to ~/.copilot/ globally
 ./sync-github-copilot.ps1 -Workspace /path/to/repo  # PowerShell for Windows
+./sync-github-copilot.ps1 -Global                   # PowerShell global install
 ```
 
-Default is symlink so hub updates flow into every synced workspace automatically. After sync, each agent becomes a Windsurf slash command (`/researcher`, `/spec-writer`, …) and the orchestrator becomes `/feature-factory`.
+Default is symlink so hub updates flow into every synced workspace automatically. After sync, each agent becomes a Devin slash command (`/researcher`, `/spec-writer`, …) and the orchestrator becomes `/feature-factory`.
 
-### What works in Windsurf
+### What works in Devin
 - Full agent body and instructions
 - Three human checkpoints (conversational pauses)
 - Slash-command invocation per agent
 
 ### What's different from Claude Code
 
-| Claude Code | Windsurf |
+| Claude Code | Devin |
 |---|---|
 | Subagents with isolated context windows | Cascade runs everything in one context |
 | Hard tool restrictions (e.g. `tools: Read, Grep, Glob`) | Guidance only — Cascade has full tools |
@@ -261,7 +291,7 @@ The discipline lives in the prompts more than in the tool restrictions, so the c
 
 ### Cursor & Copilot
 
-Not directly supported. Cursor uses `.cursor/rules/*.mdc` (different frontmatter schema); Copilot uses a single `.github/copilot-instructions.md` per workspace (no slash commands, no per-agent files). Adapters could be added if you use them more.
+Cursor is not directly supported (`.cursor/rules/*.mdc` uses a different frontmatter schema). GitHub Copilot is supported via `sync-github-copilot.sh`/`.ps1`, which maps the agents and skills into `.github/copilot/` (or `~/.copilot/` with `--global`).
 
 ## What's next
 
@@ -269,7 +299,6 @@ Not directly supported. Cursor uses `.cursor/rules/*.mdc` (different frontmatter
 - Write snapshot tests per agent.
 - Add the generic dev agents — pr-reviewer, test-generator, doc-writer, refactor-tracker.
 - Build loop-aware skills beyond feature-factory — code-review loops, doc-generation loops, migration loops.
-- Add a `--target windsurf` mode (or merge `sync-windsurf.sh` into `install.sh`) if multi-tool installation becomes a frequent need.
 
 ## License
 

@@ -14,8 +14,12 @@ docs/            loop-guide.md, graph-guide.md, and other references
 llm-context/     LLM-readable context bundles (not installed; informational only)
 install.sh       macOS/Linux installer — copies modules to ~/.claude/
 install.ps1      Windows PowerShell installer
-sync-windsurf.sh Windsurf workspace sync (symlinks by default)
-sync-github-copilot.sh / .ps1  GitHub Copilot workspace sync
+claude_install.sh / .ps1       aliases for install.sh / install.ps1
+gemini_install.sh / .ps1       Gemini / Antigravity plugin installer
+devin_install.sh / .ps1        Devin workspace sync wrappers (delegate to sync-devin.*)
+sync-devin.sh / .ps1           Devin workspace sync (symlinks by default)
+sync-github-copilot.sh / .ps1  GitHub Copilot workspace or global sync
+install_all.sh / .ps1          run every installer in one command
 agent-hub-detect.sh  auto-generate .agenthub-config.yaml for any project
 VERSION          semver tag for the hub
 CHANGELOG.md     release notes
@@ -105,10 +109,12 @@ Only generic agents that work in any repo after reading that repo's `CLAUDE.md`.
 ## Installation (for reference)
 
 ```bash
-./install.sh          # install all modules to ~/.claude/
-./install.sh -d       # dry-run
-./install.sh -f       # force overwrite
-./install.sh -p /path # per-project install to /path/.claude/
+./install_all.sh          # install/sync into all supported assistants
+./install.sh              # install all modules to ~/.claude/
+./claude_install.sh -p /path  # per-project install to /path/.claude/
+./gemini_install.sh       # install plugin to ~/.gemini/config/plugins/agent-hub/
+./sync-devin.sh /path     # sync workflows to /path/.devin/workflows/
+./sync-github-copilot.sh --global  # sync agents/skills to ~/.copilot/
 ```
 
-After install, `/feature-factory <description>` in Claude Code launches the orchestrator.
+After install, `/feature-factory <description>` in Claude Code or Devin launches the orchestrator.
