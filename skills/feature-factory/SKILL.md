@@ -1,6 +1,6 @@
 ---
 name: feature-factory
-version: 1.2.0
+version: 1.3.0
 hub-source: agent-hub
 description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints.
 ---
@@ -9,7 +9,7 @@ description: Orchestrates the 7-agent factory chain to build a feature from idea
 
 Orchestrates the 7-agent factory chain: researcher → story-writer → spec-writer → backend-builder + frontend-builder → test-verifier → validator.
 
-Three human checkpoints — story approval, brief approval, PR review. Everything else runs on its own.
+Three human checkpoints — story approval, brief approval, PR review. Everything else runs on its own. The backend/frontend step runs sequentially or in parallel per feature — see [Step 4](#step-4--build) and [graph-engine](../graph-engine/SKILL.md).
 
 ## When to use
 
@@ -80,14 +80,28 @@ Apply the skip rules from Step 0 first:
 - If the brief's backend sections are empty, skip 4a even when shape allows it.
 - If the brief's frontend section is empty, skip 4b even when shape allows it.
 
-Run **backend-builder first**, sequentially with frontend-builder (not in parallel).
+If only one of 4a/4b runs, there is nothing to parallelize — run it alone and proceed to Step 5. The choice below only applies when both builders run.
 
-Why backend first: the frontend reads the API contract from the backend's summary. If the API doesn't fit the UI, frontend-builder surfaces it as feedback and we loop back to backend-builder — not patch it client-side.
+**Decide sequential vs. parallel.** This follows the [graph-engine protocol](../graph-engine/SKILL.md) — see [docs/graph-guide.md](../../docs/graph-guide.md) for the reasoning. Read `build.parallel-builders` from `.agenthub-config.yaml` (`auto` | `always` | `never`; default `auto`) and the brief's `API contract confidence` line:
+
+| `build.parallel-builders` | `API contract confidence` | Mode |
+|---|---|---|
+| `never` | (any) | Sequential |
+| `auto` (default) | `high` | Parallel |
+| `auto` (default) | `low` | Sequential |
+| `always` | `high` | Parallel |
+| `always` | `low` | Parallel, but warn the user that confidence is `low` before proceeding |
+
+#### Sequential mode
+
+Run **backend-builder first**, then frontend-builder.
+
+Why backend first here: without a high-confidence contract, the safest source of truth for the frontend is the backend's *actual* implementation, not a brief that might drift once backend really builds it.
 
 a) Spawn `backend-builder`. Inputs: approved brief + researcher's output + project CLAUDE.md.
    Save its summary to `04-backend-summary.md`.
 
-b) Spawn `frontend-builder`. Inputs: approved brief + researcher's output + backend-builder's summary (if 4a ran) + project CLAUDE.md.
+b) Spawn `frontend-builder`. Inputs: approved brief + researcher's output + backend-builder's summary + project CLAUDE.md.
    Save its summary to `05-frontend-summary.md`.
 
 If frontend-builder surfaces an API mismatch:
@@ -95,6 +109,22 @@ If frontend-builder surfaces an API mismatch:
 - Loop back to step 4a, passing the feedback to backend-builder
 - After backend re-implements, re-run frontend-builder
 - Max 3 round trips per feature; if not converged, pause and ask the user
+
+#### Parallel mode
+
+Both builders read the brief's **API changes** section as the contract — neither reads the other's output as input. This is a `parallel-fanout` edge per the graph-engine protocol: spawn both concurrently (as a Claude Code dynamic workflow's `parallel()` call when available, or as two sequential subagent calls with the same contract-only inputs when it isn't).
+
+a) Spawn `backend-builder`. Inputs: approved brief (contract source) + researcher's output + project CLAUDE.md.
+   Save its summary to `04-backend-summary.md`.
+
+b) Spawn `frontend-builder`. Inputs: approved brief (contract source, **not** backend-builder's summary) + researcher's output + project CLAUDE.md.
+   Save its summary to `05-frontend-summary.md`.
+
+**Fan-in — contract-check gate**, once both finish: diff three things — what the brief's API section promised, what `04-backend-summary.md` actually shipped, and what `05-frontend-summary.md` assumed. Save the result to `04b-contract-check.md`.
+
+- **Match**: proceed to Step 5.
+- **Mismatch**: loop back to whichever builder drifted from the brief (usually backend, since frontend built to the brief verbatim by construction). Re-run the contract-check after the fix.
+- Max 3 round trips per feature; if not converged, pause and ask the user — the brief's API section is likely the actual problem, not either builder's implementation. This is the same reality-anchor principle graph-engine requires: the contract-check compares against the brief's literal text, not one builder's opinion of the other's code.
 
 When a builder is skipped, write a one-line placeholder to its summary file (e.g., `04-backend-summary.md`: *"SKIPPED — project.shape is frontend-only"*) so downstream agents have a clear, explicit absence rather than a missing file.
 
@@ -137,7 +167,8 @@ Hard limits to prevent thrashing:
 |---|---|---|
 | Story checkpoint | 3 | Ask if the feature is well-defined enough to proceed |
 | Spec checkpoint | 3 | Ask if the story needs to be revised |
-| Backend ↔ frontend handoff | 3 | Pause; the brief's API design is likely wrong |
+| Backend ↔ frontend handoff (sequential mode) | 3 | Pause; the brief's API design is likely wrong |
+| Backend/frontend contract-check (parallel mode) | 3 | Pause; the brief's API section is likely imprecise despite being marked `high` confidence |
 | Test failures per criterion | 3 | Pause; the brief or the criterion is likely wrong |
 | Validator critical findings | 3 | Pause; something fundamental is off |
 
@@ -154,7 +185,7 @@ A retry that gets the same context as attempt 1 will produce the same mistake. V
 | 3 (second retry) | Attempt-2 context + full failure traces + a one-paragraph summary of "what attempts 1 and 2 tried and why each failed." Root-cause mode. |
 | 4+ | Stop. Pause and ask the user — the problem is upstream (story or brief), not in the implementation. |
 
-This applies to all retry loops: backend-builder retries (test failures, validator findings), frontend-builder retries (same), and the backend↔frontend handoff (API-mismatch loop).
+This applies to all retry loops: backend-builder retries (test failures, validator findings), frontend-builder retries (same), and the backend↔frontend handoff or contract-check (whichever mode Step 4 ran in).
 
 ## Loop integration
 
@@ -193,9 +224,11 @@ The feature-factory follows the generic [loop-engine protocol](../loop-engine/SK
 - On STOPPED_AT_LIMIT: ask if the story needs to be revised (back to Loop point 1)
 - On PAUSED_FOR_HUMAN: present the brief with callouts for contract mistakes
 
-### Loop point 3 — Backend ↔ frontend handoff (Step 4)
+### Loop point 3 — Backend ↔ frontend reconciliation (Step 4)
 
-**Loop: invoke loop-engine protocol.**
+This is a `loop-back` edge inside the Step 4 graph node (see "Graph integration" below); which trigger fires depends on which mode Step 4 ran in.
+
+**Sequential mode — loop: invoke loop-engine protocol.**
 
 - Goal: Frontend-builder accepts the API contract from backend-builder
 - Success criteria:
@@ -207,6 +240,19 @@ The feature-factory follows the generic [loop-engine protocol](../loop-engine/SK
 - On CONVERGED: proceed to Step 5
 - On STOPPED_AT_LIMIT: pause — the brief's API design is likely wrong
 - On PAUSED_FOR_HUMAN: present the mismatch and ask whether to fix the brief or adjust the API
+
+**Parallel mode — loop: invoke loop-engine protocol.**
+
+- Goal: Backend's actual API and frontend's assumed API both match the brief's API section
+- Success criteria:
+  1. Contract-check (`04b-contract-check.md`) reports no mismatch between brief, backend summary, and frontend summary
+  2. Both builder summaries are complete
+- Verifier: contract-check gate — a command/agent diff against the brief's literal API section (a reality anchor, not one builder's opinion of the other's code)
+- Max iterations: 3
+- Mode: `hybrid`
+- On CONVERGED: proceed to Step 5
+- On STOPPED_AT_LIMIT: pause — the brief's API section is likely imprecise despite being marked `high` confidence; consider re-running Step 4 in sequential mode for this feature
+- On PAUSED_FOR_HUMAN: present the mismatch (brief vs. backend vs. frontend) and ask whether to fix the brief or one of the builders
 
 ### Loop point 4 — Test failure → builder fix (Step 5)
 
@@ -246,6 +292,20 @@ The escalating context strategy from the "Retry strategy" section above maps dir
 
 See the [loop framework diagram](../../diagrams/04-loop-framework.md) for a visual overview and the [loop guide](../../docs/loop-guide.md) for the full protocol reference.
 
+## Graph integration
+
+Step 4 (backend-builder + frontend-builder) follows the generic [graph-engine protocol](../graph-engine/SKILL.md): a `parallel-fanout` edge from the approved brief's API section (the contract) to both builders, gated by a fan-in contract-check, with the mode chosen per-feature by `build.parallel-builders` + the brief's `API contract confidence`. Every other step in the chain remains a plain sequential edge — the graph structure only branches at this one point.
+
+| Graph concept | Feature-factory Step 4 |
+|---|---|
+| Contract | The approved brief's API changes section |
+| Parallel nodes | `backend-builder`, `frontend-builder` |
+| Fan-in gate | Contract-check (`04b-contract-check.md`) — command/agent diff, not an LLM opinion |
+| Loop-back | Back to whichever builder drifted, via loop-engine, max 3 round trips |
+| Reality anchor | The brief's literal text (fixed at Checkpoint 2, not re-interpreted by either builder) |
+
+See the [graph engine diagram](../../diagrams/05-graph-engine.md) for the visual and [docs/graph-guide.md](../../docs/graph-guide.md) for when parallelizing a pair of nodes is safe versus when it's a race condition in disguise.
+
 ## Learning directory (optional, project-local)
 
 If `<project>/.claude/feature-factory/learning/` exists, the chain reads/writes three files:
@@ -265,12 +325,14 @@ All intermediate outputs persist under `<project>/.claude/feature-factory/<featu
 ```
 01-research.md
 02-story.md          (with STATUS: APPROVED once approved)
-03-spec.md           (with STATUS: APPROVED once approved)
+03-spec.md           (with STATUS: APPROVED once approved; includes API contract confidence)
 04-backend-summary.md
+04b-contract-check.md   (only in parallel mode)
 05-frontend-summary.md
-05-frontend-feedback.md  (only if there was a mismatch)
+05-frontend-feedback.md  (only in sequential mode, if there was a mismatch)
 06-coverage.md
 07-validator.md
+graph-state.json      (Step 4 node status + fan-in result — managed by graph-engine)
 ```
 
 This lets the chain resume cleanly if the session is interrupted. On resume: read the highest-numbered file present, identify the next step, continue from there.
@@ -291,5 +353,6 @@ Every run, note for the hub's drift loop:
 - Any time a builder reported a "CLAUDE.md rules that would have helped" entry
 - Any time the user rejected story or spec for the same reason twice
 - Any time the validator caught a class of issue that wasn't in its default checks
+- Any time Step 4 ran in parallel mode and the contract-check found a mismatch — signals `spec-writer` is over-confident marking `API contract confidence: high`
 
 These feed into hub agent updates. Surface them in the checkpoint 3 summary so the user can decide whether to update the hub now or batch later.

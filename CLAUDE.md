@@ -6,11 +6,11 @@ A personal hub of reusable Claude Code agents, skills, and rules. Current versio
 
 ```
 agents/          one .md file per agent — the 7-agent factory chain
-skills/          multi-step orchestrators (feature-factory, loop-engine)
+skills/          multi-step orchestrators (feature-factory, loop-engine, graph-engine)
 hooks/           reusable git hooks (block-secrets.sh)
-templates/       skeletons: agent-template.md, loop-template.md, loop-config-schema.yaml
-diagrams/        mermaid diagrams for the chain, distribution, drift loop, loop framework
-docs/            loop-guide.md and other references
+templates/       skeletons: agent-template.md, loop-template.md, loop-config-schema.yaml, graph-template.md
+diagrams/        mermaid diagrams for the chain, distribution, drift loop, loop framework, graph engine
+docs/            loop-guide.md, graph-guide.md, and other references
 llm-context/     LLM-readable context bundles (not installed; informational only)
 install.sh       macOS/Linux installer — copies modules to ~/.claude/
 install.ps1      Windows PowerShell installer
@@ -52,6 +52,8 @@ Each skill lives in `skills/<name>/SKILL.md` with frontmatter (`name`, `version`
 
 The `loop-engine` skill provides the generic loop protocol `DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE`. New iterative skills should use it rather than re-implementing retry logic. See `docs/loop-guide.md` and `templates/loop-template.md`.
 
+The `graph-engine` skill provides the generic multi-node protocol (nodes, edges, parallel fan-out/fan-in, reality anchors) for skills that need more than one loop — e.g. concurrent independent agents that reconcile before continuing. It composes `loop-engine` for each node's own retries, and maps onto Claude Code's native dynamic-workflow primitives (`agent()`, `parallel()`) when available. New skills with more than one node should use it rather than hand-writing fan-out prose. See `docs/graph-guide.md` and `templates/graph-template.md`.
+
 ## Project-specific configuration consumed by the agents
 
 Consuming projects place `.agenthub-config.yaml` at their root. Run `./agent-hub-detect.sh` from the hub against any project to auto-generate it. Schema v2:
@@ -73,9 +75,11 @@ test:
   folders: [...]
   acceptance-framework: playwright
   command: "..."
+build:
+  parallel-builders: auto | always | never   # default auto
 ```
 
-`project.shape` controls which agents run. Missing config → agents assume `full-stack` and warn once.
+`project.shape` controls which agents run. Missing config → agents assume `full-stack` and warn once. `build.parallel-builders` controls whether `feature-factory`'s backend/frontend step (Step 4) runs sequentially or in parallel; `auto` defers to `spec-writer`'s per-feature `API contract confidence` line.
 
 ## What belongs here
 

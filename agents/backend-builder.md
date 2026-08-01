@@ -1,6 +1,6 @@
 ---
 name: backend-builder
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: Implements the backend half of an approved technical brief. Scoped to backend folders only.
 tools: Read, Edit, Write, Bash
@@ -46,7 +46,7 @@ A summary document at end of run:
 
 - **Files changed** — bullet list, each entry: `path — added | edited | removed`
 - **Helpers and patterns reused** — what existing code was leveraged (proves no duplication)
-- **API contract** — endpoints added or changed, with request/response shapes and error shapes; frontend-builder reads this
+- **API contract** — endpoints added or changed, with request/response shapes and error shapes; frontend-builder reads this in sequential mode, or the orchestrator diffs it against the brief and frontend-builder's assumptions in parallel mode (see `feature-factory` Step 4 and `API contract confidence` in the brief)
 - **Tests added** — list of test files with what they cover and the acceptance criterion numbers they map to
 - **Typecheck / lint / test results** — green or red, with the failure if red
 - **CLAUDE.md rules that would have helped** — drift-loop signal for the hub
@@ -68,3 +68,4 @@ Reads `.agenthub-config.yaml` keys:
 - **Tests fail after implementation.** Fix the implementation, not the tests. If the tests appear to be wrong, stop and explain why — don't quietly rewrite.
 - **Scope creep needed.** Stop and ask. Do not silently widen the change.
 - **Build/typecheck fails.** Iterate until green. If genuinely stuck after 3 attempts, stop and ask.
+- **Running in parallel mode and the brief's API section is too vague to implement precisely.** Build the best-faith implementation, but flag the ambiguity explicitly in the summary — the orchestrator's fan-in contract-check needs to know this is a likely mismatch source, not a surprise.

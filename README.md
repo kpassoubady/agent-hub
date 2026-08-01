@@ -2,7 +2,7 @@
 
 A personal hub of reusable Claude Code agents, skills, and rules that work across any project.
 
-**Status:** v0.3.0 — Generic loop framework with 3 operating modes (autonomous / checkpointed / hybrid), loop-engine skill, and feature-factory integration have landed. See [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.5.0 — Generic graph-engine skill formalizes fan-out/fan-in/reality-anchor structure; feature-factory's backend/frontend step now runs sequentially or in parallel per feature. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's in here
 
@@ -11,9 +11,10 @@ agents/                # one file per agent — the 7-agent factory chain
 skills/                # multi-step orchestrators
   feature-factory/     #   end-to-end feature builder with 3 checkpoints
   loop-engine/         #   generic loop protocol (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE)
+  graph-engine/        #   generic graph protocol (nodes, edges, fan-out/fan-in, reality anchors)
 hooks/                 # reusable git hooks (currently: block-secrets)
-templates/             # skeletons for new hub agents and loop-aware skills
-diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework
+templates/             # skeletons for new hub agents, loop-aware skills, and graph-aware skills
+diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework, graph engine
 docs/                  # guides and reference documentation
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
@@ -96,6 +97,14 @@ The [feature-factory](skills/feature-factory/SKILL.md) uses the loop engine at 5
 
 See the [loop framework diagram](diagrams/04-loop-framework.md) for the full lifecycle and the [loop guide](docs/loop-guide.md) for practical documentation on building your own loop-aware skills.
 
+## Graph framework
+
+A loop is one node with an edge back to itself. The hub also includes a generic [graph-engine](skills/graph-engine/SKILL.md) for skills that need more than one node — parallel fan-out, conditional routing, or multiple nodes' outputs reconciling before the chain continues. It composes `loop-engine` (each node's own retries still use the loop protocol) and maps directly onto Claude Code's native [dynamic workflows](https://code.claude.com/docs/en/workflows) `parallel()`/`agent()` primitives when available.
+
+The [feature-factory](skills/feature-factory/SKILL.md) uses it at one point: Step 4 (backend-builder + frontend-builder) runs sequentially by default, or in parallel when `spec-writer` marks the brief's API contract precise enough (`API contract confidence: high`) and `.agenthub-config.yaml` allows it (`build.parallel-builders: auto | always`). Either way, a fan-in contract-check reconciles the brief's promise against what each builder actually produced before the chain proceeds.
+
+See the [graph engine diagram](diagrams/05-graph-engine.md) and the [graph guide](docs/graph-guide.md) — including why naively parallelizing two nodes where one reads the other's live output is a race condition, not an optimization.
+
 ## Installation
 
 Clone the repo and run the installer for your OS.
@@ -174,6 +183,12 @@ test:
   folders: ["tests/acceptance"]
   acceptance-framework: "playwright"
   command: "npx playwright test"
+
+build:
+  # auto (default) — parallelize backend/frontend only when spec-writer
+  # marks the brief's API contract confidence: high. always/never override
+  # spec-writer's per-feature judgment.
+  parallel-builders: auto
 ```
 
 ### Project shape — skip what you don't have
@@ -240,6 +255,7 @@ Default is symlink so hub updates flow into every synced workspace automatically
 | Hard tool restrictions (e.g. `tools: Read, Grep, Glob`) | Guidance only — Cascade has full tools |
 | Per-agent model selection | One Cascade model |
 | Backend / frontend folder hard scoping | Guidance only |
+| Graph-engine parallel fan-out (dynamic workflows) | Not available — Cascade's single context runs Step 4 sequentially regardless of `build.parallel-builders` |
 
 The discipline lives in the prompts more than in the tool restrictions, so the chain still works — it just relies on the agents *following* the rules rather than being *blocked* from breaking them.
 
