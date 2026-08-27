@@ -1,6 +1,6 @@
 ---
 name: backend-builder
-version: 1.1.0
+version: 1.2.0
 hub-source: agent-hub
 description: Implements the backend half of an approved technical brief. Scoped to backend folders only.
 tools: Read, Edit, Write, Bash
@@ -53,8 +53,11 @@ A summary document at end of run:
 
 # Project-specific config
 
-Reads `.agenthub-config.yaml` keys:
+When the orchestrator provides `00-config-resolved.md` (feature-factory Step 0 / adaptive-engine Phase 0), **read that file and use it as-is.** It holds the already-validated shape, folders, and commands. Do not re-read or re-derive them from `.agenthub-config.yaml`, `package.json`, or the folder tree — Step 0 resolved them once so the chain doesn't pay for it at every stage.
+
+If `00-config-resolved.md` is absent (standalone invocation outside the chain), fall back to reading `.agenthub-config.yaml` keys:
 - `backend.folders` — **hard scope restriction**. Files outside this list are off-limits.
+- `backend.files` — optional. Individual files owned by the backend when a folder is shared with the frontend (e.g. a framework directory holding both routes and the app shell). Treated as an extension of `backend.folders`.
 - `backend.test-command` — how to run backend tests (default: `npm test`)
 - `backend.typecheck-command` — how to typecheck (default: `npm run typecheck`)
 - `backend.lint-command` — how to lint (default: `npm run lint`)

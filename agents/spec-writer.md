@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-version: 1.2.0
+version: 1.3.0
 hub-source: agent-hub
 description: Turns an approved user story into a technical brief. The second human checkpoint — and the most important one.
 tools: Read, Grep, Glob
@@ -56,7 +56,9 @@ The API section is the contract the frontend-builder will consume verbatim. Be p
 
 # Project-specific config
 
-Reads `.agenthub-config.yaml` keys:
+When the orchestrator provides `00-config-resolved.md` (feature-factory Step 0 / adaptive-engine Phase 0), **read that file and use it as-is.** It holds the already-validated shape, folders, and commands. Do not re-read or re-derive them from `.agenthub-config.yaml`, `package.json`, or the folder tree — Step 0 resolved them once so the chain doesn't pay for it at every stage.
+
+If `00-config-resolved.md` is absent (standalone invocation outside the chain), fall back to reading `.agenthub-config.yaml` keys:
 - `backend.folders`, `frontend.folders` — boundary hints
 - `test.folders`, `test.acceptance-framework` — how to express test entries
 - `stack` — optional override if CLAUDE.md is missing stack info

@@ -78,10 +78,16 @@ has_dep_in_package_json() {
 has_dir() { [[ -d "$PROJECT_DIR/$1" ]]; }
 
 first_existing_dir() {
+  # Prints the first candidate that exists as a real directory, or nothing
+  # (empty string) if none exist. Callers must handle the empty case —
+  # never fall back to a candidate name that hasn't been confirmed to exist,
+  # since that produces a config pointing at a folder the project doesn't have.
+  # Always exits 0: under `set -e`, a failing status from the last `[[ ]]`
+  # check would otherwise abort the whole script when nothing matches.
   for d in "$@"; do
-    [[ -d "$PROJECT_DIR/$d" ]] && { echo "$d"; return; }
+    [[ -d "$PROJECT_DIR/$d" ]] && { echo "$d"; return 0; }
   done
-  echo "$1"
+  return 0
 }
 
 # ----- language and framework -----
@@ -177,9 +183,16 @@ detect_frontend() {
       for cfg in vite.config.js vite.config.ts vite.config.mjs next.config.js nuxt.config.js astro.config.mjs svelte.config.js; do
         [[ -f "$PROJECT_DIR/$cfg" ]] && return 0
       done
-      for dir in src/web src/components src/client frontend web client; do
+      for dir in src/web src/components src/client frontend web client static templates; do
         has_dir "$dir" && return 0
       done
+      return 1
+      ;;
+    dotnet)
+      # Blazor/MAUI-style solutions: a root-level *.Client / *.WebClient / *.UI
+      # project folder, rather than a fixed dir name.
+      [[ -n "$(dotnet_project_dirs '\.(client|webclient|ui)$' | head -1)" ]] && return 0
+      for dir in frontend web client static/js; do has_dir "$dir" && return 0; done
       return 1
       ;;
     *)
@@ -275,6 +288,21 @@ detect_test_framework() {
   esac
 }
 
+# dotnet solutions commonly have no top-level `src/` at all — each project
+# lives in its own root-level folder (e.g. RecipeApp.Api, RecipeApp.Client).
+# List root-level dirs that contain a .csproj/.fsproj, split by naming
+# convention so backend/frontend/test projects can be told apart.
+dotnet_project_dirs() {
+  # dotnet_project_dirs SUFFIX_REGEX -> matching root-level project dirs, one per line
+  local suffix_regex="$1" dir base
+  find "$PROJECT_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | while IFS= read -r dir; do
+    base=$(basename "$dir")
+    compgen -G "$dir/*.csproj" >/dev/null 2>&1 || compgen -G "$dir/*.fsproj" >/dev/null 2>&1 || continue
+    [[ -n "$suffix_regex" ]] && ! echo "$base" | grep -qiE "$suffix_regex" && continue
+    echo "$base"
+  done
+}
+
 suggest_backend_folder() {
   local lang="$1"
   case "$lang" in
@@ -303,13 +331,30 @@ suggest_backend_folder() {
     rust)   first_existing_dir src ;;
     ruby)   first_existing_dir app lib ;;
     java)   first_existing_dir src/main/java src ;;
-    dotnet) first_existing_dir src ;;
+    dotnet)
+      local d
+      d=$(first_existing_dir src)
+      if [[ -n "$d" ]]; then
+        echo "$d"
+      else
+        # No src/ dir: fall back to root-level *.csproj project folders,
+        # excluding ones that look like the client/shared/test projects.
+        # `|| true`: grep exits 1 when every project looks like client/shared/
+        # test-only, and pipefail would otherwise abort the whole script.
+        dotnet_project_dirs '' | grep -viE '\.(client|web(client)?|ui|shared|tests?)$' || true
+      fi
+      ;;
     *)      first_existing_dir src lib ;;
   esac
 }
 
 suggest_frontend_folder() {
-  first_existing_dir src/web src/components src/client frontend web client src
+  local lang="$1"
+  if [[ "$lang" == dotnet ]]; then
+    dotnet_project_dirs '\.(client|webclient|ui)$' | head -1
+    return
+  fi
+  first_existing_dir src/web src/components src/client frontend web client static templates
 }
 
 suggest_test_folder() {
@@ -379,13 +424,129 @@ detect_frontend "$LANGUAGE" && HAS_FRONTEND="true"
 SHAPE=$(derive_shape "$HAS_BACKEND" "$HAS_FRONTEND" "$LANGUAGE")
 TEST_FRAMEWORK=$(detect_test_framework "$LANGUAGE")
 
-BACKEND_FOLDER=$(suggest_backend_folder "$LANGUAGE")
-FRONTEND_FOLDER=$(suggest_frontend_folder)
+# suggest_backend_folder can print multiple lines (dotnet multi-project
+# solutions with no top-level src/). Collect all of them; BACKEND_FOLDER holds
+# just the first, for the overlap checks below which reason about one path.
+BACKEND_FOLDERS_DETECTED=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && BACKEND_FOLDERS_DETECTED+=("$line")
+done < <(suggest_backend_folder "$LANGUAGE")
+BACKEND_FOLDER="${BACKEND_FOLDERS_DETECTED[0]:-}"
+
+FRONTEND_FOLDER=$(suggest_frontend_folder "$LANGUAGE")
 TEST_FOLDER=$(suggest_test_folder "$LANGUAGE")
+
+# ----- resolve backend/frontend scope overlap -----
+# backend.folders and frontend.folders are HARD scope restrictions for their
+# builders. If one is nested inside the other, the outer builder is authorised
+# to edit the inner one's files. feature-factory's Step 0 gate rejects such a
+# config, so never emit one. Narrow the outer side to concrete subfolders.
+#
+# The common case is a full-stack framework where a single tree (src, or
+# Next.js src/app) holds both halves.
+is_nested_path() {
+  # is_nested_path CHILD PARENT -> 0 when CHILD is inside PARENT
+  [[ "$1" != "$2" && "$1" == "$2"/* ]]
+}
+
+narrow_backend_folders() {
+  # Emit backend folders that exclude the frontend folder. Prefer real
+  # framework subfolders; fall back to the sibling dirs of the frontend folder.
+  local be="$1" fe="$2" out=()
+  for cand in "$be/api" "$be/app/api" "$be/server" "$be/lib" "$be/utils" "$be/services" "$be/db"; do
+    [[ -d "$PROJECT_DIR/$cand" ]] && out+=("$cand")
+  done
+  if [[ ${#out[@]} -eq 0 ]]; then
+    # No conventional backend subfolder: take every child of $be except $fe.
+    local child rel
+    while IFS= read -r child; do
+      rel="${child#"$PROJECT_DIR"/}"
+      [[ "$rel" == "$fe" ]] && continue
+      is_nested_path "$fe" "$rel" && continue
+      out+=("$rel")
+    done < <(find "$PROJECT_DIR/$be" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+  fi
+  # Guard the empty case: under bash 3.2, "${out[@]}" on an empty array with
+  # `set -u` errors, and printf would otherwise emit one blank line.
+  [[ ${#out[@]} -eq 0 ]] && return 0
+  printf '%s\n' "${out[@]}"
+}
+
+if [[ ${#BACKEND_FOLDERS_DETECTED[@]} -gt 0 ]]; then
+  BACKEND_FOLDERS=("${BACKEND_FOLDERS_DETECTED[@]}")
+else
+  BACKEND_FOLDERS=()
+fi
+if [[ -n "$FRONTEND_FOLDER" ]]; then
+  FRONTEND_FOLDERS=("$FRONTEND_FOLDER")
+else
+  FRONTEND_FOLDERS=()
+fi
+OVERLAP_NOTE=""
+
+if [[ "$HAS_BACKEND" == true && "$HAS_FRONTEND" == true && -n "$BACKEND_FOLDER" && -n "$FRONTEND_FOLDER" ]]; then
+  if is_nested_path "$FRONTEND_FOLDER" "$BACKEND_FOLDER"; then
+    # bash 3.2 (macOS default) has no mapfile — read line-by-line instead.
+    narrowed=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && narrowed+=("$line")
+    done < <(narrow_backend_folders "$BACKEND_FOLDER" "$FRONTEND_FOLDER")
+    if [[ ${#narrowed[@]} -gt 0 ]]; then
+      BACKEND_FOLDERS=("${narrowed[@]}")
+      OVERLAP_NOTE="# NOTE: '$FRONTEND_FOLDER' sits inside '$BACKEND_FOLDER'. Backend scope was
+# narrowed to the folders below so the two builders do not overlap. Review it —
+# add any backend folder that was missed, and see frontend.files for shell files."
+    else
+      OVERLAP_NOTE="# WARNING: '$FRONTEND_FOLDER' sits inside '$BACKEND_FOLDER' and no backend
+# subfolder could be derived. Split these by hand before running the factory —
+# feature-factory's Step 0 gate rejects overlapping backend/frontend scopes."
+    fi
+  elif is_nested_path "$BACKEND_FOLDER" "$FRONTEND_FOLDER"; then
+    OVERLAP_NOTE="# WARNING: '$BACKEND_FOLDER' sits inside '$FRONTEND_FOLDER'. Narrow
+# frontend.folders by hand (list its real subfolders, or move the shared shell
+# files to frontend.files) — Step 0 rejects overlapping scopes."
+  fi
+fi
+
+# Next.js App Router: src/app holds both api/ routes and the page shell. List
+# the shell files individually so src/app/api stays outside frontend scope.
+FRONTEND_FILES=()
+if [[ "$FRAMEWORK" == next ]]; then
+  for shell in page.tsx page.jsx layout.tsx layout.jsx globals.css; do
+    for base in src/app app; do
+      [[ -f "$PROJECT_DIR/$base/$shell" ]] && FRONTEND_FILES+=("$base/$shell")
+    done
+  done
+fi
 
 TEST_CMD=$(suggest_test_command "$LANGUAGE")
 TYPECHECK_CMD=$(suggest_typecheck_command "$LANGUAGE")
 LINT_CMD=$(suggest_lint_command "$LANGUAGE")
+
+# ----- flag folders that could not be confirmed -----
+# suggest_*_folder now returns empty rather than a guessed name when nothing
+# on disk matches. That means the project's layout doesn't follow the naming
+# conventions this detector knows about — common for a POC/MVP repo that grew
+# organically. Surface it instead of silently emitting a folder that doesn't
+# exist.
+UNCONFIRMED_NOTE=""
+missing_sections=()
+[[ "$HAS_BACKEND" == true && ${#BACKEND_FOLDERS[@]} -eq 0 ]] && missing_sections+=("backend.folders")
+[[ "$HAS_FRONTEND" == true && -z "$FRONTEND_FOLDER" ]] && missing_sections+=("frontend.folders")
+[[ -z "$TEST_FOLDER" ]] && missing_sections+=("test.folders")
+
+if [[ ${#missing_sections[@]} -gt 0 ]]; then
+  joined=$(printf '%s, ' "${missing_sections[@]}")
+  joined="${joined%, }"
+  UNCONFIRMED_NOTE="# WARNING: could not confirm a folder for: $joined.
+# This project's layout doesn't match a standard convention for $LANGUAGE
+# (common in POC/MVP repos that grew ad hoc). Fill in the placeholder(s)
+# below by hand — do NOT leave a guessed path that doesn't exist on disk.
+# For anything beyond a small addition, consider restructuring into a
+# conventional layout (e.g. src/ or server/+client/) before running
+# /feature-factory — builders scope themselves strictly to these folders,
+# so an unclear layout leads to unclear or incorrect edits."
+fi
 
 # ----- summarize -----
 echo "" >&2
@@ -396,6 +557,13 @@ echo -e "Framework:      ${CYAN}$FRAMEWORK${NC}" >&2
 echo -e "Shape:          ${CYAN}$SHAPE${NC}" >&2
 echo -e "Test framework: ${CYAN}$TEST_FRAMEWORK${NC}" >&2
 echo "" >&2
+
+if [[ -n "$UNCONFIRMED_NOTE" ]]; then
+  echo -e "${YELLOW}Could not confirm a real folder for: $joined${NC}" >&2
+  echo -e "${YELLOW}This layout doesn't match a standard $LANGUAGE convention — see the${NC}" >&2
+  echo -e "${YELLOW}WARNING comment in the generated config for what to do next.${NC}" >&2
+  echo "" >&2
+fi
 
 # ----- generate yaml -----
 TODAY=$(date +%Y-%m-%d)
@@ -414,28 +582,48 @@ project:
   framework: $FRAMEWORK
 EOF
 
-  if [[ "$SHAPE" != "frontend-only" ]]; then
-    cat <<EOF
+  if [[ -n "$OVERLAP_NOTE" ]]; then
+    echo ""
+    echo "$OVERLAP_NOTE"
+  fi
 
-backend:
-  folders:
-    - $BACKEND_FOLDER
-  test-command: $TEST_CMD
-EOF
+  if [[ -n "$UNCONFIRMED_NOTE" ]]; then
+    echo ""
+    echo "$UNCONFIRMED_NOTE"
+  fi
+
+  if [[ "$SHAPE" != "frontend-only" ]]; then
+    echo ""
+    echo "backend:"
+    echo "  folders:"
+    if [[ ${#BACKEND_FOLDERS[@]} -gt 0 ]]; then
+      for f in "${BACKEND_FOLDERS[@]}"; do echo "    - $f"; done
+    else
+      echo "    - REPLACE_ME  # no backend folder could be confirmed — see WARNING above"
+    fi
+    echo "  test-command: $TEST_CMD"
     [[ -n "$TYPECHECK_CMD" ]] && echo "  typecheck-command: $TYPECHECK_CMD"
     [[ -n "$LINT_CMD"      ]] && echo "  lint-command: $LINT_CMD"
   fi
 
   if [[ "$SHAPE" == "full-stack" || "$SHAPE" == "frontend-only" ]]; then
-    cat <<EOF
-
-frontend:
-  folders:
-    - $FRONTEND_FOLDER
-  test-command: npm test
-  typecheck-command: npm run typecheck
-  lint-command: npm run lint
-EOF
+    echo ""
+    echo "frontend:"
+    echo "  folders:"
+    if [[ ${#FRONTEND_FOLDERS[@]} -gt 0 ]]; then
+      for f in "${FRONTEND_FOLDERS[@]}"; do echo "    - $f"; done
+    else
+      echo "    - REPLACE_ME  # no frontend folder could be confirmed — see WARNING above"
+    fi
+    if [[ ${#FRONTEND_FILES[@]} -gt 0 ]]; then
+      echo "  # Frontend-owned files inside a folder the backend also uses"
+      echo "  # (Next.js src/app holds both api/ routes and the page shell)."
+      echo "  files:"
+      for f in "${FRONTEND_FILES[@]}"; do echo "    - $f"; done
+    fi
+    echo "  test-command: npm test"
+    echo "  typecheck-command: npm run typecheck"
+    echo "  lint-command: npm run lint"
   else
     cat <<EOF
 
@@ -450,14 +638,16 @@ EOF
 EOF
   fi
 
-  cat <<EOF
-
-test:
-  folders:
-    - $TEST_FOLDER
-  acceptance-framework: $TEST_FRAMEWORK
-  command: $TEST_CMD
-EOF
+  echo ""
+  echo "test:"
+  echo "  folders:"
+  if [[ -n "$TEST_FOLDER" ]]; then
+    echo "    - $TEST_FOLDER"
+  else
+    echo "    - REPLACE_ME  # no test folder could be confirmed — see WARNING above"
+  fi
+  echo "  acceptance-framework: $TEST_FRAMEWORK"
+  echo "  command: $TEST_CMD"
 }
 
 YAML_CONTENT=$(build_yaml)
@@ -472,5 +662,10 @@ else
   echo "" >&2
   echo -e "${BOLD}Next steps:${NC}" >&2
   echo "  1. Review the config and adjust folder/command lists if needed." >&2
-  echo "  2. In Claude Code or Devin, run: /feature-factory <feature description>" >&2
+  if [[ -n "$UNCONFIRMED_NOTE" ]] && printf '%s' "$joined" | grep -q "test\."; then
+    echo "  2. No real test setup detected — run /test-bootstrap first." >&2
+    echo "  3. In Claude Code or Devin, run: /feature-factory <feature description>" >&2
+  else
+    echo "  2. In Claude Code or Devin, run: /feature-factory <feature description>" >&2
+  fi
 fi

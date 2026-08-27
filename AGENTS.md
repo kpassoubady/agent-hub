@@ -10,3 +10,5 @@ Read `CLAUDE.md` at the repo root for:
 - What belongs in this hub vs. elsewhere
 - Markdown formatting conventions
 - Versioning and release process
+
+*Note: In addition to the standard 7-agent factory chain, this hub also includes an `adaptive-engine` skill and its associated `planner` agent for dynamic workflow orchestration.*

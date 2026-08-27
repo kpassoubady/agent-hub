@@ -6,12 +6,16 @@ Build a feature end-to-end through specialized agents, each with a clean context
 
 > **v0.3.0** — loop-back arrows now follow the generic [loop-engine protocol](04-loop-framework.md). See that diagram for the full lifecycle, escalating context flow, and operating modes.
 
+> **v0.7.0** — Step 0 is now a **blocking gate**, not a lookup. A missing config is generated and confirmed; an invalid one stops the chain. The gate's decisions are written to `00-config-resolved.md`, which every later agent reads instead of re-deriving them.
+
 ```mermaid
 flowchart TD
-    Config[".agenthub-config.yaml<br/>project.shape · language · framework"]
     Idea[Rough feature idea]
-    Idea --> Config
-    Config --> R[1. researcher<br/>maps the codebase<br/>Read · Grep · Glob]
+    Idea --> G0{{"Step 0 — config gate<br/>.agenthub-config.yaml"}}
+    G0 -.->|"missing → detect,<br/>show, confirm"| G0
+    G0 ==>|"invalid → STOP"| Halt["chain does not run<br/>report every bad key"]
+    G0 ==>|valid| Resolved["00-config-resolved.md<br/>shape · folders · commands<br/>(binding for all agents)"]
+    Resolved --> R[1. researcher<br/>maps the codebase<br/>Read · Grep · Glob]
     R --> SW[2. story-writer<br/>user story + acceptance criteria<br/>Read]
     SW --> CP1{{Checkpoint 1<br/>approve story?}}
     CP1 -.->|changes needed| SW
@@ -33,7 +37,9 @@ flowchart TD
     Learn[("learning/<br/>patterns · selectors · failures")] -.-> R
     V -.-> Learn
 
-    style Config fill:#d4edda,stroke:#28a745,color:#000
+    style G0 fill:#fff3cd,stroke:#d4a017,color:#000
+    style Halt fill:#f8d7da,stroke:#c82333,color:#000
+    style Resolved fill:#d4edda,stroke:#28a745,color:#000
     style Idea fill:#f5f5f5,stroke:#666,color:#000
     style R fill:#e1f5ff,stroke:#0366d6,color:#000
     style SW fill:#e1f5ff,stroke:#0366d6,color:#000
@@ -50,7 +56,7 @@ flowchart TD
 
 ## How it runs
 
-0. **Step 0** — read `.agenthub-config.yaml` and extract `project.shape` (`full-stack` | `backend-only` | `frontend-only` | `library`). This determines which builders are eligible to run.
+0. **Step 0 — config gate (blocking).** Read and validate `.agenthub-config.yaml`. Missing → generate a candidate with `agent-hub-detect.sh -d`, show it, and require *accept / edit / abort*. Invalid → stop and report every bad key. Valid → write `00-config-resolved.md`, which binds `project.shape` (`full-stack` | `backend-only` | `frontend-only` | `library`), the folder scopes, and the exact commands for every later agent. **The chain never proceeds on assumed defaults.**
 1. **researcher** maps the relevant code (read-only). Reads `learning/patterns.md` if present.
 2. **story-writer** turns the idea into a user story with numbered acceptance criteria.
 3. **Checkpoint 1** — you approve or revise the story.
@@ -61,6 +67,36 @@ flowchart TD
 8. **test-verifier** writes acceptance tests, one per numbered criterion. Reports `PASS | FAIL | UNCOVERED`.
 9. **validator** does a read-only gap analysis against the story and brief. Reports `Critical | Important | Minor`. Appends recurring findings to `learning/failures.md`.
 10. **Checkpoint 3** — you review the diff and open the PR.
+
+## Why Step 0 blocks
+
+This is the part students most often want to argue with: why stop the whole chain over a config file?
+
+Because the cost of a missing config isn't paid once — it's paid by every agent downstream. In a real run where the config was absent, the chain assumed `full-stack` and then **four separate stages independently re-derived the same test commands** from `package.json`: the researcher, the spec-writer, and both builders. Resolving it once at Step 0 costs one read.
+
+The inverse failure is worse. In another real run, a project *correctly* declared `shape: backend-only` — and frontend-builder was still spawned on **8 of 18 features**, each time burning a full context window to write a one-line "N/A — backend-only, this is a CLI" placeholder. Step 0 had the right answer; nothing made later steps honour it.
+
+So the gate has two jobs, and the second is the one people forget:
+
+| Job | Mechanism |
+|---|---|
+| Get a valid config | Generate → confirm → validate, or stop |
+| **Make it binding** | Write `00-config-resolved.md`; every agent reads that, not the YAML |
+
+An advisory Step 0 is not a gate. It's a suggestion with a nice table.
+
+Full detail, including a graded exercise: [docs/config-gate-guide.md](../docs/config-gate-guide.md).
+
+### What "invalid" means
+
+A config naming things that don't exist is *worse* than no config, because agents will trust it and report green against commands that never ran. The gate rejects:
+
+- folders or files that aren't there
+- commands that resolve to no script or binary
+- **backend and frontend scopes that overlap** — if `frontend.folders` contains `src/app` while `backend.folders` contains `src/app/api`, frontend-builder is authorised to rewrite your API routes
+- a `project.shape` that isn't one of the four known values, or that contradicts the populated sections
+
+The overlap rule has a wrinkle worth teaching: in Next.js App Router, `src/app` genuinely holds both halves — `api/` routes *and* `page.tsx`. The fix isn't to give the folder to one builder; it's to give the subtree to the backend and list the frontend's shell files under `frontend.files`.
 
 ## Loop-back rules
 

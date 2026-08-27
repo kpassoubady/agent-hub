@@ -1,6 +1,6 @@
 ---
 name: researcher
-version: 1.1.0
+version: 1.2.0
 hub-source: agent-hub
 description: Maps the relevant parts of an existing codebase before any feature work begins. Read-only.
 tools: Read, Grep, Glob
@@ -56,7 +56,9 @@ A markdown document with these sections, in this order:
 
 # Project-specific config
 
-Reads `.agenthub-config.yaml` keys:
+When the orchestrator provides `00-config-resolved.md` (feature-factory Step 0 / adaptive-engine Phase 0), **read that file and use it as-is.** It holds the already-validated shape, folders, and commands. Do not re-read or re-derive them from `.agenthub-config.yaml`, `package.json`, or the folder tree — Step 0 resolved them once so the chain doesn't pay for it at every stage.
+
+If `00-config-resolved.md` is absent (standalone invocation outside the chain), fall back to reading `.agenthub-config.yaml` keys:
 - `backend.folders` and `frontend.folders` — boundary hints for the search
 - `test.folders` — where tests live (defaults: `tests/`, `test/`, `**/__tests__/`)
 - `claude-md-path` — override if CLAUDE.md lives outside repo root
