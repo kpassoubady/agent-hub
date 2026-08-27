@@ -1,6 +1,6 @@
 ---
 name: frontend-builder
-version: 1.1.0
+version: 1.2.0
 hub-source: agent-hub
 description: Implements the frontend half of an approved technical brief. Scoped to frontend folders only. Reads backend-builder's API summary, or the brief's API section directly when running in parallel with backend-builder.
 tools: Read, Edit, Write, Bash
@@ -62,7 +62,10 @@ A summary document at end of run:
 
 # Project-specific config
 
-Reads `.agenthub-config.yaml` keys:
+When the orchestrator provides `00-config-resolved.md` (feature-factory Step 0 / adaptive-engine Phase 0), **read that file and use it as-is.** It holds the already-validated shape, folders, and commands. Do not re-read or re-derive them from `.agenthub-config.yaml`, `package.json`, or the folder tree — Step 0 resolved them once so the chain doesn't pay for it at every stage.
+
+If `00-config-resolved.md` is absent (standalone invocation outside the chain), fall back to reading `.agenthub-config.yaml` keys:
+- `frontend.files` — optional. Individual files owned by the frontend when a folder is shared with the backend (e.g. Next.js `src/app`, which holds both `api/` routes and `page.tsx`/`layout.tsx`). Treated as an extension of `frontend.folders`.
 - `frontend.folders` — **hard scope restriction**
 - `frontend.test-command` — how to run frontend tests
 - `frontend.typecheck-command` — how to typecheck

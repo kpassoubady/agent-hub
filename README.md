@@ -2,7 +2,7 @@
 
 A personal hub of reusable Claude Code agents, skills, and rules that work across any project.
 
-**Status:** v0.5.0 — Generic graph-engine skill formalizes fan-out/fan-in/reality-anchor structure; feature-factory's backend/frontend step now runs sequentially or in parallel per feature. See [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.8.0 — added `test-bootstrap` to stand up a real test framework for projects that have none, and `agent-hub-detect.sh` no longer emits a config pointing at folders that don't exist. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's in here
 
@@ -10,12 +10,14 @@ A personal hub of reusable Claude Code agents, skills, and rules that work acros
 agents/                # one file per agent — the 7-agent factory chain
 skills/                # multi-step orchestrators
   feature-factory/     #   end-to-end feature builder with 3 checkpoints
+  adaptive-engine/     #   dynamic orchestration layer (planner agent → custom graph)
+  test-bootstrap/      #   installs a minimal real test framework for a project that has none
   loop-engine/         #   generic loop protocol (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE)
   graph-engine/        #   generic graph protocol (nodes, edges, fan-out/fan-in, reality anchors)
 hooks/                 # reusable git hooks (currently: block-secrets)
 templates/             # skeletons for new hub agents, loop-aware skills, and graph-aware skills
-diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework, graph engine
-docs/                  # guides and reference documentation
+diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework, graph engine, adaptive engine
+docs/                  # guides and reference documentation (incl. config-gate-guide.md)
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
 claude_install.sh      # alias for install.sh (matches personal-helper naming)
@@ -40,7 +42,8 @@ CHANGELOG.md           # what changed in each release
 ```mermaid
 flowchart TD
     Idea[Rough feature idea]
-    Idea --> R[1. researcher<br/>maps the codebase]
+    Idea --> G0{{"Step 0 — config gate<br/>valid .agenthub-config.yaml<br/>or the chain stops"}}
+    G0 ==> R[1. researcher<br/>maps the codebase]
     R --> SW[2. story-writer<br/>user story + acceptance criteria]
     SW --> CP1{{Checkpoint 1<br/>approve story?}}
     CP1 -.->|changes needed| SW
@@ -59,6 +62,7 @@ flowchart TD
     V -.->|Critical| FE
     FE -.->|API mismatch| BE
 
+    style G0 fill:#fff3cd,stroke:#d4a017,color:#000
     style Idea fill:#f5f5f5,stroke:#666,color:#000
     style R fill:#e1f5ff,stroke:#0366d6,color:#000
     style SW fill:#e1f5ff,stroke:#0366d6,color:#000
@@ -74,6 +78,7 @@ flowchart TD
 
 | # | Agent | Tools | Role |
 |---|---|---|---|
+| 0 | *(orchestrator)* | Read, Bash | **Config gate** — validate or generate `.agenthub-config.yaml`; bind it to `00-config-resolved.md` |
 | 1 | [researcher](agents/researcher.md) | Read, Grep, Glob | Maps relevant code before any feature work begins |
 | 2 | [story-writer](agents/story-writer.md) | Read | Turns idea into user story + acceptance criteria |
 | 3 | [spec-writer](agents/spec-writer.md) | Read, Grep, Glob | Turns approved story into technical brief |
@@ -82,7 +87,9 @@ flowchart TD
 | 6 | [test-verifier](agents/test-verifier.md) | Read, Edit, Write, Bash | Writes acceptance tests against the story |
 | 7 | [validator](agents/validator.md) | Read, Grep, Glob | Read-only gap analysis vs story and brief |
 
-Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill. Three human checkpoints: story approval, brief approval, PR review.
+Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill (or the dynamic [adaptive-engine](docs/adaptive-engine-guide.md)). Three human checkpoints: story approval, brief approval, PR review.
+
+Step 0 is a **blocking config gate** — the chain does not start without a valid `.agenthub-config.yaml`. See the [config gate guide](docs/config-gate-guide.md) for why it blocks, what counts as invalid, and the scope-overlap rule.
 
 More diagrams — distribution model, drift loop, and loop framework — under [diagrams/](diagrams/).
 
@@ -174,7 +181,21 @@ After `./sync-devin.sh`, in Devin: `/feature-factory <feature description>` shou
 
 ## Project-specific configuration
 
-Each agent reads `.agenthub-config.yaml` at the consuming project's root.
+`.agenthub-config.yaml` at the consuming project's root tells the chain which agents apply, where their scope boundaries are, and how to verify work.
+
+### It is required — Step 0 gates on it
+
+As of v0.7.0, `/feature-factory` and `/adaptive-engine` **will not run without a valid config.** Step 0 has exactly three outcomes:
+
+| Config state | What happens |
+|---|---|
+| **Missing** | The chain runs `agent-hub-detect.sh -d`, shows you the proposed YAML, and asks **accept / edit / abort**. Nothing runs until you confirm. |
+| **Invalid** | The chain **stops** and reports every offending key. It does not fall back to defaults. |
+| **Valid** | The resolved values are written to `00-config-resolved.md` in the run's state directory, and every agent reads *that* instead of re-deriving them. |
+
+Why blocking rather than a warning: the earlier `warn once and assume full-stack` behaviour meant four separate stages — researcher, spec-writer, and both builders — independently re-derived the same test commands from `package.json` on every run. And a project that correctly declared `shape: backend-only` still had frontend-builder spawned on 8 of 18 features just to write "N/A". Resolving once and binding the result fixes both.
+
+For a genuine throwaway, `--no-config` runs unconfigured and says so loudly in the final summary.
 
 ### Auto-generate it
 
@@ -204,6 +225,10 @@ backend:
   lint-command: "npm run lint --workspace=server"
 frontend:
   folders: ["src/web", "src/components"]
+  # Optional. Individual files owned by this side when a folder is shared with
+  # the other side — e.g. Next.js src/app holds both api/ routes and page.tsx.
+  # Lets you keep scopes non-overlapping without splitting the framework's tree.
+  files: ["src/app/page.tsx", "src/app/layout.tsx"]
   test-command: "npm test --workspace=web"
   typecheck-command: "npm run typecheck --workspace=web"
   lint-command: "npm run lint --workspace=web"
@@ -230,7 +255,25 @@ build:
 
 Even for `full-stack` projects, the orchestrator skips a builder per feature when the spec-writer's brief marks its section `None` — the brief is the per-feature source of truth.
 
-The agents fall back to sensible defaults if a key is missing. If `project.shape` is missing, the chain assumes `full-stack` and warns once.
+A skipped builder is **never spawned**. The orchestrator writes the one-line placeholder itself, naming the rule that caused the skip. Spawning an agent to report that it has nothing to do costs a context window and returns nothing the orchestrator didn't already know.
+
+If `project.shape` is missing or unrecognised, Step 0 treats the config as invalid and stops — it no longer assumes `full-stack`.
+
+### Scope boundaries must not overlap
+
+`backend.folders` and `frontend.folders` are **hard scope restrictions**, so Step 0 rejects a config where one contains the other. Otherwise the outer builder is silently authorised to edit the inner one's files — e.g. `frontend.folders: [src/app]` alongside `backend.folders: [src/app/api]` lets frontend-builder rewrite your API routes.
+
+When a framework directory genuinely holds both halves (Next.js App Router being the usual case), give the shared subtree to one side and list the other side's individual files under `files:`:
+
+```yaml
+backend:
+  folders: [src/app/api, src/lib]
+frontend:
+  folders: [src/components, public]
+  files:   [src/app/page.tsx, src/app/layout.tsx, src/app/globals.css]
+```
+
+`agent-hub-detect.sh` detects this case and emits a non-overlapping config automatically, with a `# NOTE:` explaining what it narrowed.
 
 ## What does NOT belong in this hub
 

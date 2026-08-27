@@ -5,12 +5,12 @@ A personal hub of reusable Claude Code agents, skills, and rules. Current versio
 ## Repository layout
 
 ```
-agents/          one .md file per agent — the 7-agent factory chain
-skills/          multi-step orchestrators (feature-factory, loop-engine, graph-engine)
+agents/          one .md file per agent — the factory chain and adaptive planner
+skills/          multi-step orchestrators (feature-factory, adaptive-engine, test-bootstrap, loop-engine, graph-engine)
 hooks/           reusable git hooks (block-secrets.sh)
 templates/       skeletons: agent-template.md, loop-template.md, loop-config-schema.yaml, graph-template.md
 diagrams/        mermaid diagrams for the chain, distribution, drift loop, loop framework, graph engine
-docs/            loop-guide.md, graph-guide.md, and other references
+docs/            config-gate-guide.md, loop-guide.md, graph-guide.md, and other references
 llm-context/     LLM-readable context bundles (not installed; informational only)
 install.sh       macOS/Linux installer — copies modules to ~/.claude/
 install.ps1      Windows PowerShell installer
@@ -54,13 +54,19 @@ Use `templates/agent-template.md` as the starting point for new agents.
 
 Each skill lives in `skills/<name>/SKILL.md` with frontmatter (`name`, `version`, `hub-source`, `description`). Skills orchestrate agents; they do not implement features directly.
 
+The `adaptive-engine` skill provides a dynamic orchestration layer. Instead of running a fixed pipeline, it uses a `planner` agent to analyze a request and generate a custom `graph.json` execution plan on the fly. See `docs/adaptive-engine-guide.md`.
+
 The `loop-engine` skill provides the generic loop protocol `DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE`. New iterative skills should use it rather than re-implementing retry logic. See `docs/loop-guide.md` and `templates/loop-template.md`.
 
 The `graph-engine` skill provides the generic multi-node protocol (nodes, edges, parallel fan-out/fan-in, reality anchors) for skills that need more than one loop — e.g. concurrent independent agents that reconcile before continuing. It composes `loop-engine` for each node's own retries, and maps onto Claude Code's native dynamic-workflow primitives (`agent()`, `parallel()`) when available. New skills with more than one node should use it rather than hand-writing fan-out prose. See `docs/graph-guide.md` and `templates/graph-template.md`.
 
+The `test-bootstrap` skill installs a minimal real test framework and one passing smoke test per side for a project that has none — common in POC/MVP repos. It runs the `test-bootstrapper` agent, and is the answer when `agent-hub-detect.sh` flags `test.folders` as unconfirmed (`REPLACE_ME` in the generated config). It is scaffolding only: `test-verifier` still writes feature-specific acceptance tests inside `feature-factory`, and coverage-raising agents still do the work of raising coverage on existing code.
+
 ## Project-specific configuration consumed by the agents
 
-Consuming projects place `.agenthub-config.yaml` at their root. Run `./agent-hub-detect.sh` from the hub against any project to auto-generate it. Schema v2:
+Consuming projects place `.agenthub-config.yaml` at their root. Run `./agent-hub-detect.sh` from the hub against any project to auto-generate it.
+
+**It is required.** `feature-factory` Step 0 and `adaptive-engine` Phase 0 are blocking gates: a missing config is generated and confirmed (accept/edit/abort), an invalid one stops the chain, and a valid one is written to `00-config-resolved.md` which every downstream agent reads instead of re-deriving. See `docs/config-gate-guide.md`. Schema v2:
 
 ```yaml
 project:
@@ -69,11 +75,13 @@ project:
   framework: vite
 backend:
   folders: [...]
+  files: [...]          # optional — files owned by this side inside a shared folder
   test-command: "..."
   typecheck-command: "..."
   lint-command: "..."
 frontend:
   folders: [...]
+  files: [...]          # optional — e.g. Next.js src/app/page.tsx, layout.tsx
   ...
 test:
   folders: [...]
@@ -83,7 +91,7 @@ build:
   parallel-builders: auto | always | never   # default auto
 ```
 
-`project.shape` controls which agents run. Missing config → agents assume `full-stack` and warn once. `build.parallel-builders` controls whether `feature-factory`'s backend/frontend step (Step 4) runs sequentially or in parallel; `auto` defers to `spec-writer`'s per-feature `API contract confidence` line.
+`project.shape` controls which agents run. Missing or invalid config → Step 0 blocks (it no longer assumes `full-stack`). `backend.folders` and `frontend.folders` must not overlap — the gate rejects a config where one contains the other, since each is a hard scope restriction for its builder. `build.parallel-builders` controls whether `feature-factory`'s backend/frontend step (Step 4) runs sequentially or in parallel; `auto` defers to `spec-writer`'s per-feature `API contract confidence` line.
 
 ## What belongs here
 
@@ -117,4 +125,4 @@ Only generic agents that work in any repo after reading that repo's `CLAUDE.md`.
 ./sync-github-copilot.sh --global  # sync agents/skills to ~/.copilot/
 ```
 
-After install, `/feature-factory <description>` in Claude Code or Devin launches the orchestrator.
+After install, `/feature-factory <description>` or `/adaptive-engine <description>` in Claude Code or Devin launches the orchestrator.

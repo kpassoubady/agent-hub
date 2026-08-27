@@ -2,6 +2,50 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.8.0] — 2026-08-27
+
+Motivated by running `agent-hub-detect.sh` against 10 real POC/MVP repos: several produced a config pointing at folders that don't exist, and none of the sample repos without tests had any path forward other than hand-writing a test setup before `/feature-factory` could gate meaningfully.
+
+### Added
+
+- **`test-bootstrapper` agent + `test-bootstrap` skill.** Installs a minimal, idiomatic test framework (pytest / vitest+Playwright / JUnit / xUnit, chosen by language) for a project that has none, writes one real passing smoke test per side, and updates `.agenthub-config.yaml` to match. Scaffolding only — it does not write feature-specific tests (`test-verifier`'s job) or chase coverage (a coverage-raising agent's job). Requires `backend.folders`/`frontend.folders` to already be confirmed; a human checkpoint gates the framework choice before anything is installed.
+- **`feature-factory` (1.4.0 → 1.5.0): Step 0 now rejects placeholder test commands.** A `test.command` (or any `*-command` key) that resolves to `agent-hub-detect.sh`'s own fallback text or an unconfirmed `REPLACE_ME` folder now fails validation the same as a command that doesn't resolve at all, and points the user at `/test-bootstrap`. Previously such a config could pass Step 0 and let the coverage report and validator both report green against a command that runs nothing.
+
+### Fixed — `agent-hub-detect.sh` silently emitted folders that don't exist
+
+- **`first_existing_dir` no longer falls back to a guessed name.** It previously returned its first candidate literally even when none of the candidates existed on disk — e.g. a dotnet project with no `src/` directory (`recipe-sharing-app`'s `RecipeApp.Api`/`.Client`/`.Shared` layout) still got `backend.folders: [src]`, a path that doesn't exist. It now returns empty, and the generated config emits an explicit `REPLACE_ME` placeholder plus a `WARNING` comment naming which sections need manual attention, instead of a folder reference that silently doesn't exist.
+- **dotnet multi-project solutions with no top-level `src/` are now detected correctly.** Backend/frontend detection previously only checked for directories literally named `frontend`/`web`/`client`/`static/js`, which never matches per-project naming like `RecipeApp.Client`. `recipe-sharing-app` was misclassified as `backend-only`; it's now correctly `full-stack` with `backend.folders: [RecipeApp.Api]` and `frontend.folders: [RecipeApp.Client]`.
+- **Frontend folder candidates gained `static`/`templates`.** Flask/Jinja-style layouts (`trimly`, `movie-watchlist`) previously fell through to a guessed `src/web` that doesn't exist.
+- **Node backend/frontend detection still misses flat-root layouts** (e.g. `book-log`'s root-level `app.js`, `quote-of-the-day`'s root-level `server.js`) — these now correctly surface the `REPLACE_ME`/WARNING path instead of emitting a wrong `src/server` guess, but no folder is auto-detected for them yet. Left as a known gap rather than adding another fixed candidate name — see the WARNING block's advice to restructure.
+- **A `set -e`/`pipefail` regression introduced while fixing the above** silently aborted the script (no output, exit 1) on projects where a folder guess came back empty. Fixed by ensuring `first_existing_dir` and the new dotnet detection helpers always exit 0 on the "nothing matched" path.
+
+## [0.7.0] — 2026-08-27
+
+Motivated by a retrospective on 21 real chain runs across two projects — see `llm-context/todos/2026-08-27-run-retrospective-and-feedback-skill.md`.
+
+### Changed — Step 0 is now a blocking gate (breaking behaviour change)
+
+- **`feature-factory` (1.3.0 → 1.4.0): Step 0 blocks instead of warning.** Previously a missing `.agenthub-config.yaml` produced a one-time warning and the chain assumed `full-stack`. It now resolves to one of three outcomes:
+  - *missing* → run `agent-hub-detect.sh -d`, show the proposed YAML, require **accept / edit / abort**;
+  - *invalid* → **stop**, reporting every offending key (folders/files that don't exist, commands that don't resolve, overlapping backend/frontend scopes, unknown `project.shape` or `build.parallel-builders`);
+  - *valid* → proceed.
+  - A `--no-config` escape hatch remains for genuine one-offs and must be disclosed in the Checkpoint 3 summary.
+- **The gate's decisions are now binding.** Step 0 writes `00-config-resolved.md` into the run's state directory holding the validated shape, folder scopes, and command strings. **Every downstream agent reads that file instead of re-deriving from `.agenthub-config.yaml` or `package.json`.** In one observed run, four separate stages re-derived the same test commands because nothing bound the Step 0 result.
+- **A skipped builder is no longer spawned.** The orchestrator writes the one-line placeholder itself, naming the rule that caused the skip. Previously a project correctly declaring `shape: backend-only` still had `frontend-builder` spawned on 8 of 18 features, each time consuming a context window to write "N/A — backend-only".
+- **`adaptive-engine` (1.0.0 → 1.1.0): added Phase 0**, running the same gate before the planner. A planner working from an assumed shape emits nodes for builders the project may not have, and every node inherits unvalidated commands.
+- **`adaptive-engine`: slug derivation is now deterministic** and shared with `feature-factory` (description → lowercase → slugify → truncate 40). Planning must first check for an existing state directory and resume rather than re-plan. One story was previously planned twice, two minutes apart, under two different slugs, producing two mutually incompatible graph schemas — neither matching the feature-factory directory holding the actual work.
+- **All 8 agents bumped** (`researcher` 1.2.0, `story-writer` 1.1.0, `spec-writer` 1.3.0, `backend-builder` 1.2.0, `frontend-builder` 1.2.0, `test-verifier` 1.1.0, `validator` 1.2.0, `planner` 1.1.0) — each now prefers `00-config-resolved.md` and falls back to reading the YAML only when invoked standalone outside a chain.
+
+### Added
+
+- **`backend.files` / `frontend.files` (schema v2, optional)** — individual files owned by one side when a folder is genuinely shared with the other. Solves the Next.js App Router case, where `src/app` holds both `api/` route handlers and the `page.tsx`/`layout.tsx` shell: give the subtree to the backend and list the shell files under `frontend.files`, keeping scopes non-overlapping without splitting the framework's tree.
+- **`docs/config-gate-guide.md`** — teaching-oriented guide: what the gate is, why it blocks, why it must be binding, the full validation list, the overlap rule and its Next.js wrinkle, and a graded exercise with four seeded defects.
+
+### Fixed
+
+- **`agent-hub-detect.sh` emitted overlapping scopes.** For a Next.js project it produced `backend.folders: [src]` alongside `frontend.folders: [src/components]` — an overlap the new gate correctly rejects, meaning the detector's own output would have failed validation. It now detects nesting, narrows the outer side to real subfolders (`src/app/api`, `src/lib`, `src/utils`), emits Next.js shell files under `frontend.files`, and explains what it narrowed in a `# NOTE:` block. Non-overlapping layouts (e.g. `src/server` + `src/web`) are unaffected.
+- **`agent-hub-detect.sh` bash 3.2 compatibility.** The new logic initially used `mapfile`, which does not exist in the bash 3.2 that ships with macOS; replaced with a portable read loop, plus an empty-array guard around `printf`.
+
 ## [0.6.0] — 2026-08-01
 
 ### Added

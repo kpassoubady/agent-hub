@@ -1,6 +1,6 @@
 ---
 name: story-writer
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: Turns a rough feature idea into a user story with testable acceptance criteria. Output is the first human checkpoint.
 tools: Read
@@ -53,7 +53,9 @@ Counter-example (too implementation-y):
 
 # Project-specific config
 
-Reads `.agenthub-config.yaml` keys:
+When the orchestrator provides `00-config-resolved.md` (feature-factory Step 0 / adaptive-engine Phase 0), **read that file and use it as-is.** It holds the already-validated shape, folders, and commands. Do not re-read or re-derive them from `.agenthub-config.yaml`, `package.json`, or the folder tree — Step 0 resolved them once so the chain doesn't pay for it at every stage.
+
+If `00-config-resolved.md` is absent (standalone invocation outside the chain), fall back to reading `.agenthub-config.yaml` keys:
 - `story.format` — optional alternate story template (default: "As a [role], I want [behaviour], so that [outcome].")
 - `story.roles` — known roles in the system (admin, member, viewer, etc.); the story-writer picks from this list when the role is ambiguous
 

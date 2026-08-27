@@ -1,8 +1,8 @@
 ---
 name: feature-factory
-version: 1.3.0
+version: 1.5.0
 hub-source: agent-hub
-description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints.
+description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints and a blocking config gate.
 ---
 
 # Feature Factory
@@ -22,23 +22,106 @@ The user invoked `/feature-factory <feature description>` (or asked to "build fe
 
 ## The chain
 
-### Step 0 — Read project shape
+### Step 0 — Config gate (blocking)
 
-Before starting, read `<project>/.agenthub-config.yaml` and extract `project.shape`. This decides which agents in the chain actually run.
+**This is a gate, not a lookup. Nothing downstream runs until it resolves.** The chain does not proceed on assumed defaults — a wrong assumption here is paid for four times over, once by every agent that has to re-derive what the config should have told it.
+
+Read `<project>/.agenthub-config.yaml`. Exactly one of three outcomes:
+
+#### Outcome A — missing
+
+Do **not** assume `full-stack`, and do **not** just tell the user to go make a file. Generate a candidate and ask them to confirm it:
+
+1. Run the hub's detector: `<hub>/agent-hub-detect.sh -d <project>` (dry-run — prints YAML to stdout, writes nothing).
+2. Show the user the proposed YAML in full.
+3. **🛑 Ask: accept / edit / abort.**
+   - *accept* → write it to `<project>/.agenthub-config.yaml`, then continue to validation below.
+   - *edit* → take their changes, show the result, ask again.
+   - *abort* → stop the chain. Do not fall back to defaults.
+
+If the detector is unavailable (hub path unknown, script missing), hand-write a candidate from what's actually in the repo — read `package.json` / `pyproject.toml` / `go.mod`, list the real folders, quote the real scripts — and still require explicit confirmation. Never invent a command you haven't seen in a manifest.
+
+#### Outcome B — present but invalid
+
+**Fail. Do not proceed.** A config that names things which don't exist is worse than no config, because every downstream agent will trust it and report green against commands that never ran. Validate all of the following and report *every* failure at once, each with the offending key and value:
+
+| Check | Fails when |
+|---|---|
+| Folders exist | any path in `backend.folders`, `frontend.folders`, or `test.folders` is not a directory |
+| Files exist | any path in the optional `backend.files` / `frontend.files` is not a file |
+| Commands resolve | any `test-command`, `typecheck-command`, `lint-command`, or `test.command` names a script/binary that doesn't exist (check `package.json` scripts, `pyproject.toml`, or `$PATH`) |
+| **Folders don't overlap** | any `backend.folders` entry is inside a `frontend.folders` entry, or vice versa |
+| Files respect the other side's folders | a `frontend.files` entry sits inside a `backend.folders` entry, or vice versa |
+| Shape is known | `project.shape` is not one of `full-stack` \| `backend-only` \| `frontend-only` \| `library` |
+| Shape matches sections | shape is `backend-only`/`library` but `frontend.folders` is populated, or `frontend-only` but `backend.folders` is populated |
+| Parallel flag is known | `build.parallel-builders` is set and is not `auto` \| `always` \| `never` |
+
+If `test.command` (or any `*-command` key) resolves to a placeholder rather than a real command — `agent-hub-detect.sh`'s own fallback text (`echo 'no test command configured'`), or a `REPLACE_ME` folder it couldn't confirm — treat that the same as failing the "commands resolve" check: **fail, do not proceed.** Point the user at the `test-bootstrap` skill to install a real framework and smoke test first, then re-run Step 0. A chain that "passes" tests by running `echo` is worse than one that visibly has no tests, because the coverage report and validator will both report green.
+
+The overlap check matters more than it looks. `backend.folders` is a **hard scope restriction** for backend-builder, and the same is true of `frontend.folders` for frontend-builder. If `frontend.folders` contains `src/app` while `backend.folders` contains `src/app/api`, then frontend-builder is authorised to rewrite your API routes. Narrow one side; don't let both claim the same tree.
+
+**When a framework directory genuinely holds both halves** — Next.js App Router being the common case, where `src/app` contains `api/` routes *and* `page.tsx`/`layout.tsx` — don't hand the whole folder to one builder. Give the shared folder's subtree to the backend and list the frontend's individual files under the optional `frontend.files` key (or vice versa):
+
+```yaml
+backend:
+  folders: [src/app/api, src/lib]
+frontend:
+  folders: [src/components, public]
+  files: [src/app/page.tsx, src/app/layout.tsx, src/app/globals.css]
+```
+
+`backend.files` / `frontend.files` are optional and behave as an extension of that side's `folders` for scope purposes.
+
+Offer to re-run detection (`--force`) or let the user fix the file by hand, then re-validate. Nothing proceeds on an invalid config.
+
+#### Outcome C — present and valid
+
+Proceed — and **make the gate binding** (see below).
+
+#### Binding the resolved config
+
+Write the resolved values to `<project>/.claude/feature-factory/<feature-slug>/00-config-resolved.md`:
+
+```markdown
+# Resolved config — <feature-slug>
+Source: <project>/.agenthub-config.yaml (validated <ISO-8601 timestamp>)
+Origin: existing | generated-and-confirmed-this-run
+
+shape: full-stack
+builders eligible: backend-builder, frontend-builder
+backend.folders: src/app/api, src/lib
+frontend.folders: src/components, public
+frontend.files: src/app/page.tsx, src/app/layout.tsx
+test.command: pnpm test:e2e
+backend.test-command: pnpm test
+backend.typecheck-command: pnpm exec tsc --noEmit
+backend.lint-command: pnpm lint
+build.parallel-builders: auto
+```
+
+**Every downstream agent reads this file, not the YAML.** That is what makes Step 0 binding rather than advisory. It also means each command string is resolved and validated exactly once instead of being re-derived by the researcher, the spec-writer, and both builders.
+
+This is a real bug the hub has shipped: a project correctly declaring `shape: backend-only` still had frontend-builder spawned on 8 of 18 features, each time to write a one-line "N/A — backend-only" placeholder. Step 0's decision was being recomputed, and ignored, downstream.
+
+#### Shape → chain
 
 | `project.shape` | Chain adjustment |
 |---|---|
-| `full-stack` | Run all 7 agents (default). |
-| `backend-only` | Skip frontend-builder. test-verifier exercises API or CLI only. |
-| `frontend-only` | Skip backend-builder. The spec must say where the API lives (external service, mock). |
-| `library` | Same as `backend-only`: skip frontend-builder. spec-writer treats the package's public surface as the "API". |
+| `full-stack` | All 7 agents eligible. |
+| `backend-only` | frontend-builder **never spawns**. test-verifier exercises API or CLI only. |
+| `frontend-only` | backend-builder **never spawns**. The spec must say where the API lives (external service, mock). |
+| `library` | Same as `backend-only`. spec-writer treats the package's public surface as the "API". |
 
-If `.agenthub-config.yaml` is missing or `project.shape` is unset, assume `full-stack` and warn the user once at the start: *"No project.shape in .agenthub-config.yaml — assuming full-stack. Run `./agent-hub-detect.sh --force` in the hub directory to refresh."*
+"Never spawns" is literal. An ineligible builder is not spawned to report its own inapplicability — the orchestrator writes the placeholder itself (see Step 4).
 
 **Per-feature override.** Even when `project.shape` allows both builders, **skip a builder when the spec-writer's brief has no work for it.** The brief is the per-feature source of truth — a `full-stack` project can still run a 6-agent chain for an API-only feature. The skip rule:
 
 - Backend-builder skipped if the brief's `API changes` and `Data model changes` sections are empty or marked `None`.
 - Frontend-builder skipped if the brief's `Frontend changes` section is empty or marked `None`.
+
+#### Escape hatch
+
+`/feature-factory --no-config <description>` runs without a config for a genuine one-off. It assumes `full-stack`, and the Checkpoint 3 summary must state prominently that the run was unconfigured and which commands were guessed. Use it for throwaway experiments, not for real features.
 
 ### Step 1 — Research
 Spawn the `researcher` agent. Inputs: the feature description + project CLAUDE.md.
@@ -126,7 +209,12 @@ b) Spawn `frontend-builder`. Inputs: approved brief (contract source, **not** ba
 - **Mismatch**: loop back to whichever builder drifted from the brief (usually backend, since frontend built to the brief verbatim by construction). Re-run the contract-check after the fix.
 - Max 3 round trips per feature; if not converged, pause and ask the user — the brief's API section is likely the actual problem, not either builder's implementation. This is the same reality-anchor principle graph-engine requires: the contract-check compares against the brief's literal text, not one builder's opinion of the other's code.
 
-When a builder is skipped, write a one-line placeholder to its summary file (e.g., `04-backend-summary.md`: *"SKIPPED — project.shape is frontend-only"*) so downstream agents have a clear, explicit absence rather than a missing file.
+When a builder is skipped, **the orchestrator writes the placeholder itself — it does not spawn the builder to write it.** Spawning an agent to report that it has nothing to do costs a full context window and returns no information the orchestrator didn't already have from `00-config-resolved.md` and the brief.
+
+The placeholder is one line naming the rule that caused the skip, so downstream agents see an explicit absence rather than a missing file:
+
+- `04-backend-summary.md`: *"SKIPPED — project.shape is frontend-only (00-config-resolved.md)"*
+- `05-frontend-summary.md`: *"SKIPPED — brief marks Frontend changes: None (03-spec.md)"*
 
 ### Step 5 — Verify
 Spawn `test-verifier`. Inputs: approved story + approved brief + both builder summaries.
@@ -165,6 +253,7 @@ Hard limits to prevent thrashing:
 
 | Step | Max iterations | Action when exceeded |
 |---|---|---|
+| Config gate (Step 0) | 3 | Stop. Do not run the chain unconfigured — ask the user to fix `.agenthub-config.yaml` by hand |
 | Story checkpoint | 3 | Ask if the feature is well-defined enough to proceed |
 | Spec checkpoint | 3 | Ask if the story needs to be revised |
 | Backend ↔ frontend handoff (sequential mode) | 3 | Pause; the brief's API design is likely wrong |
@@ -323,6 +412,7 @@ The learning directory is per-project, not per-feature, and survives across chai
 All intermediate outputs persist under `<project>/.claude/feature-factory/<feature-slug>/`:
 
 ```
+00-config-resolved.md   (Step 0 gate output — the binding config for every later agent)
 01-research.md
 02-story.md          (with STATUS: APPROVED once approved)
 03-spec.md           (with STATUS: APPROVED once approved; includes API contract confidence)
@@ -346,6 +436,8 @@ This lets the chain resume cleanly if the session is interrupted. On resume: rea
 - Skip checkpoints, even if the user says "just do it" — the three checkpoints are non-negotiable
 - Add agents to the chain at runtime (the chain is fixed; new agents go through hub planning)
 - Run in fully autonomous mode without checkpoints — that's a different skill, not this one
+- Proceed past Step 0 on an assumed or invalid config (use `--no-config` if you genuinely mean to)
+- Spawn a builder that Step 0 or the brief already ruled out, just to have it report "N/A"
 
 ## Drift signals to record
 
