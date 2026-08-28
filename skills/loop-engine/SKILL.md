@@ -1,6 +1,6 @@
 ---
 name: loop-engine
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: >
   Generic loop engine that any skill can invoke for iterative work.
@@ -126,7 +126,15 @@ This pattern applies universally. The calling skill can override it by setting `
 
 ## State tracking
 
-Every iteration is logged as one JSON line in `loop-state.jsonl`, persisted in the calling skill's state directory:
+Every iteration is logged as one JSON line in `loop-state.jsonl`, persisted in the calling skill's state directory.
+
+**Append-only-at-transition — this is a resume log, not a post-hoc audit trail.** Write each entry the moment that phase actually completes, not batched at the end of the run. A real run showed six iterations — spec approval, reconciliation, three test-verification rounds, a coverage fix — sharing one timestamp, because the file was written retroactively after everything had already happened. A crash mid-run at iteration 2 would have left zero record that iteration 1 ever ran, which defeats the entire point of a resume log. The rule:
+
+1. Write the entry for phase P **as soon as P's VERIFY result is known** — before starting phase P+1's PLAN, not after the loop converges or stops.
+2. Never hold multiple iterations' entries in memory to flush together. One entry, one append, immediately.
+3. If the environment can't guarantee a synchronous append (e.g. an agent that only returns a final summary with no intermediate write access), the calling skill must still write the entry itself right after that agent's phase completes — do not defer the write to whichever agent runs last in the chain.
+
+A `timestamp` field that's identical across several consecutive entries is a signal the writes were batched, not real — treat that as a defect in the calling skill's integration, not a cosmetic detail.
 
 ```jsonl
 {"iteration":1,"phase":"VERIFY","result":"FAIL","criteria_met":["C1","C3"],"criteria_failed":["C2"],"summary":"Attempt 1: implemented auth middleware but missed tenant isolation check on the /invoices endpoint.","timestamp":"2025-06-21T19:30:00Z"}
@@ -135,7 +143,7 @@ Every iteration is logged as one JSON line in `loop-state.jsonl`, persisted in t
 ```
 
 This lets:
-- The loop **resume** if the session is interrupted (read the last entry, continue from there)
+- The loop **resume** if the session is interrupted (read the last entry, continue from there) — which only works if the entry for the last *completed* phase was actually on disk before the crash, not written after
 - The loop **learn** from prior attempts (each iteration sees what failed before)
 - The calling skill **report** iteration history at its checkpoint
 

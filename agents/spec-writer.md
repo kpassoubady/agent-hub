@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-version: 1.3.0
+version: 1.4.0
 hub-source: agent-hub
 description: Turns an approved user story into a technical brief. The second human checkpoint — and the most important one.
 tools: Read, Grep, Glob
@@ -27,7 +27,7 @@ Produces one document with these sections, in order:
 4. **Process / background flow** — sequence diagram or numbered steps for any non-trivial flow.
 5. **API changes** — endpoints, request shapes, response shapes, status codes, error shapes. `None` if API-untouched.
 6. **Frontend changes** — components, pages, hooks, state. `None` for backend-only or API-only features.
-7. **Tests required** — success paths, failure paths, edge cases — each entry references the acceptance criterion number(s) it covers.
+7. **Tests required** — success paths, failure paths, edge cases — each entry cites the acceptance criterion number(s) it covers by reference (`02-story.md:AC3`), not by re-quoting the criterion's text.
 8. **Risks and open questions** — anything that could go wrong, anything genuinely unclear.
 9. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification.
 
@@ -39,6 +39,7 @@ Produces one document with these sections, in order:
 - Leave any acceptance criterion without a corresponding test entry
 - Recommend anti-patterns the researcher flagged (e.g., "store IDs in memory")
 - Defer security questions — they belong in the brief
+- Restate or re-expand the story's acceptance criteria anywhere in the brief — cite them by number and point at `02-story.md`
 
 # Inputs it expects
 
@@ -49,6 +50,8 @@ Produces one document with these sections, in order:
 # Output contract
 
 Every acceptance criterion in the story maps to at least one test entry. Every file in the file-level change plan has a one-line justification (why this file changes). Open questions block forward progress — the chain does not advance until they are answered.
+
+**Cite, don't restate.** `02-story.md` is the one place acceptance criteria are written out in full. Every reference to a criterion elsewhere in this brief — Tests required, Risks and open questions, anywhere — is a citation (`AC3`, or `02-story.md:AC3`), never a re-quote of the criterion's text. The retrospective evidence for this rule: the same 7 acceptance criteria appeared four times across `02-story.md` and two sections of `03-spec.md` in one real run, and the copies drifted from each other by the time the brief was approved. A citation cannot drift; a restatement can.
 
 The API section is the contract the frontend-builder will consume verbatim. Be precise about field names, types, and error shapes.
 

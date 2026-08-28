@@ -4,6 +4,8 @@ The generic graph structure that formalizes fan-out, fan-in, and conditional rou
 
 > **v0.5.0** — introduced alongside `feature-factory`'s configurable backend/frontend parallelization.
 
+> **v0.12.0** — `graph-state.json` removed as the default. For a linear chain with one fan-out/fan-in pair, node status and fan-in results are derived from the calling skill's own numbered artifacts instead. See "No separate state file" below — the diagram in this file no longer shows a separate state file.
+
 ## Generic shape: fan-out, fan-in, reality anchor
 
 ```mermaid
@@ -22,7 +24,7 @@ flowchart TD
 
     Anchor ==> Next["Next node in the graph"]
 
-    State[("graph-state.json\nnode status + fan-in result")] -.-> FanIn
+    State[("Calling skill's own numbered\nartifacts — node status +\nfan-in result. No graph-state.json.")] -.-> FanIn
 
     style Contract fill:#d4edda,stroke:#28a745,color:#000
     style NA fill:#e1f5ff,stroke:#0366d6,color:#000
@@ -35,6 +37,8 @@ flowchart TD
 ```
 
 **The rule that keeps this honest:** Node A and Node B both read the *contract*, never each other's in-progress output. If B's real input is "A's actual result," the edge is sequential — draw it that way instead of forcing a fan-out.
+
+**No separate state file.** An earlier version of this skill declared `graph-state.json` as the default. It was removed in `v0.12.0` after two real instances of the file actively lying — one recorded status for 2 of 7 participating nodes, another was written once, hours after the fact, under node names from an abandoned plan. For the common case (a linear chain with one fan-out/fan-in pair), node status is derivable from which numbered output files exist, and the fan-in result lives in that fan-in's own artifact (e.g. `04b-contract-check.md`) — see [skills/graph-engine/SKILL.md](../skills/graph-engine/SKILL.md#state-tracking).
 
 ## feature-factory redrawn as an explicit graph
 

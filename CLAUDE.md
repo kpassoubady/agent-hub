@@ -6,7 +6,7 @@ A personal hub of reusable Claude Code agents, skills, and rules. Current versio
 
 ```
 agents/          one .md file per agent — the factory chain and adaptive planner
-skills/          multi-step orchestrators (feature-factory, adaptive-engine, test-bootstrap, loop-engine, graph-engine)
+skills/          multi-step orchestrators (feature-factory, adaptive-engine, test-bootstrap, loop-engine, graph-engine, run-feedback, hub-improve)
 hooks/           reusable git hooks (block-secrets.sh)
 templates/       skeletons: agent-template.md, loop-template.md, loop-config-schema.yaml, graph-template.md
 diagrams/        mermaid diagrams for the chain, distribution, drift loop, loop framework, graph engine
@@ -54,13 +54,15 @@ Use `templates/agent-template.md` as the starting point for new agents.
 
 Each skill lives in `skills/<name>/SKILL.md` with frontmatter (`name`, `version`, `hub-source`, `description`). Skills orchestrate agents; they do not implement features directly.
 
-The `adaptive-engine` skill provides a dynamic orchestration layer. Instead of running a fixed pipeline, it uses a `planner` agent to analyze a request and generate a custom `graph.json` execution plan on the fly. See `docs/adaptive-engine-guide.md`.
+The `adaptive-engine` skill is a thin wrapper around `feature-factory`'s fixed chain, not a replacement for it. A `planner` agent decides only whether a feature needs extra pre-gates (preconditions) or post-gates (independent verification) around the chain, which always runs as a single opaque `feature-factory-chain` node — the planner never re-derives the chain's own 7 agents. In the common case it declares zero extra gates and recommends `/feature-factory` directly. See `docs/adaptive-engine-guide.md`.
 
 The `loop-engine` skill provides the generic loop protocol `DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE`. New iterative skills should use it rather than re-implementing retry logic. See `docs/loop-guide.md` and `templates/loop-template.md`.
 
 The `graph-engine` skill provides the generic multi-node protocol (nodes, edges, parallel fan-out/fan-in, reality anchors) for skills that need more than one loop — e.g. concurrent independent agents that reconcile before continuing. It composes `loop-engine` for each node's own retries, and maps onto Claude Code's native dynamic-workflow primitives (`agent()`, `parallel()`) when available. New skills with more than one node should use it rather than hand-writing fan-out prose. See `docs/graph-guide.md` and `templates/graph-template.md`.
 
 The `test-bootstrap` skill installs a minimal real test framework and one passing smoke test per side for a project that has none — common in POC/MVP repos. It runs the `test-bootstrapper` agent, and is the answer when `agent-hub-detect.sh` flags `test.folders` as unconfirmed (`REPLACE_ME` in the generated config). It is scaffolding only: `test-verifier` still writes feature-specific acceptance tests inside `feature-factory`, and coverage-raising agents still do the work of raising coverage on existing code.
+
+The `run-feedback` skill runs mechanical (grep/count/diff, never self-graded) checks against a just-completed `feature-factory`/`adaptive-engine` run and writes a scorecard plus zero or more hub-change proposals. It's invoked automatically at both skills' final checkpoint and files proposals to `llm-context/feedback/inbox/` when the hub is present locally. The `hub-improve` skill is its consumer: invoked standalone by the hub maintainer (not wired into any project's automatic run), it clusters inbox findings by target file, recomputes recurrence itself, and drafts a proposal only for a cluster with ≥2 independent runs (or one `high`-severity run with re-verified evidence) — then applies **only** what a human explicitly approves, one candidate at a time. Neither skill auto-applies a hub-file edit under any condition.
 
 ## Project-specific configuration consumed by the agents
 

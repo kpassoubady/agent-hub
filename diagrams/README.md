@@ -9,6 +9,8 @@ Visual explanations of how the agent hub works. All diagrams use [Mermaid](https
 | [03-drift-loop.md](03-drift-loop.md) | How real-project surprises become hub improvements that benefit every consuming project |
 | [04-loop-framework.md](04-loop-framework.md) | The generic loop lifecycle: 5 phases, 3 operating modes, escalating context, and state persistence |
 | [05-graph-engine.md](05-graph-engine.md) | The generic graph structure (fan-out, fan-in, reality anchor) and feature-factory's backend/frontend step redrawn as an explicit graph |
+| [06-adaptive-engine.md](06-adaptive-engine.md) | The thin wrapper: planner agent declares extra pre/post gates → graph-engine runs them around one opaque `feature-factory-chain` node |
+| [07-run-feedback.md](07-run-feedback.md) | A completed run's artifacts feeding mechanical checks, the scorecard shown inline at the checkpoint, and the not-yet-built `hub-improve` inbox consumer drawn as explicitly distinct |
 
 ## Editing
 

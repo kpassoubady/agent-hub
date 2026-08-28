@@ -2,22 +2,23 @@
 
 A personal hub of reusable Claude Code agents, skills, and rules that work across any project.
 
-**Status:** v0.8.0 — added `test-bootstrap` to stand up a real test framework for projects that have none, and `agent-hub-detect.sh` no longer emits a config pointing at folders that don't exist. See [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.14.0 — `adaptive-engine` narrowed to a thin wrapper: its `planner` agent now only declares extra pre/post gates around `feature-factory`'s fixed chain (treated as one opaque node), instead of re-deriving the 7-agent pipeline into a large custom graph, and the two skills now share the exact same state directory per feature. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What's in here
 
 ```
-agents/                # one file per agent — the 7-agent factory chain
+agents/                # one file per agent — the 7-agent factory chain, planner, and run-feedback-analyzer
 skills/                # multi-step orchestrators
-  feature-factory/     #   end-to-end feature builder with 3 checkpoints
-  adaptive-engine/     #   dynamic orchestration layer (planner agent → custom graph)
+  feature-factory/     #   end-to-end feature builder with checkpoints, a trivial-tier fast path, and mechanical gates
+  adaptive-engine/     #   thin wrapper — planner agent declares extra pre/post gates around feature-factory's fixed chain
   test-bootstrap/      #   installs a minimal real test framework for a project that has none
+  run-feedback/        #   mechanical scorecard + hub-change proposals for a completed run
   loop-engine/         #   generic loop protocol (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE)
   graph-engine/        #   generic graph protocol (nodes, edges, fan-out/fan-in, reality anchors)
 hooks/                 # reusable git hooks (currently: block-secrets)
 templates/             # skeletons for new hub agents, loop-aware skills, and graph-aware skills
-diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework, graph engine, adaptive engine
-docs/                  # guides and reference documentation (incl. config-gate-guide.md)
+diagrams/              # mermaid diagrams: chain, distribution, drift loop, loop framework, graph engine, adaptive engine, run feedback
+docs/                  # guides and reference documentation (incl. config-gate-guide.md, run-feedback-guide.md)
 install.sh             # Claude Code installer (macOS / Linux / git-bash)
 install.ps1            # Claude Code installer (Windows PowerShell)
 claude_install.sh      # alias for install.sh (matches personal-helper naming)
@@ -43,8 +44,11 @@ CHANGELOG.md           # what changed in each release
 flowchart TD
     Idea[Rough feature idea]
     Idea --> G0{{"Step 0 — config gate<br/>valid .agenthub-config.yaml<br/>or the chain stops"}}
-    G0 ==> R[1. researcher<br/>maps the codebase]
-    R --> SW[2. story-writer<br/>user story + acceptance criteria]
+    G0 ==> PF["Step 0.5 — environment preflight<br/>docker · DB client · deploy CLI"]
+    PF --> R[1. researcher<br/>maps the codebase + peer-deps]
+    R --> Tier{{"Step 1.5 — trivial?<br/>(one lightweight checkpoint)"}}
+    Tier -.->|trivial, accepted| BE
+    Tier ==>|standard| SW[2. story-writer<br/>user story + acceptance criteria]
     SW --> CP1{{Checkpoint 1<br/>approve story?}}
     CP1 -.->|changes needed| SW
     CP1 ==>|approved| SP[3. spec-writer<br/>technical brief]
@@ -52,17 +56,20 @@ flowchart TD
     CP2 -.->|changes needed| SP
     CP2 ==>|approved| BE[4. backend-builder<br/>backend folders only]
     BE --> FE[5. frontend-builder<br/>frontend folders only]
-    FE --> TV[6. test-verifier<br/>test files only]
-    TV --> V[7. validator<br/>read-only gap analysis]
-    V --> CP3{{Checkpoint 3<br/>review and open PR}}
+    FE --> TV[6. test-verifier<br/>test files only + negative controls]
+    TV --> V[7. validator<br/>read-only gap analysis + AC roll-up]
+    V --> RF[run-feedback<br/>mechanical scorecard]
+    RF --> CP3{{Checkpoint 3<br/>review and open PR}}
 
-    TV -.->|FAIL| BE
-    TV -.->|FAIL| FE
+    TV -.->|FAIL/PARTIAL| BE
+    TV -.->|FAIL/PARTIAL| FE
     V -.->|Critical| BE
     V -.->|Critical| FE
     FE -.->|API mismatch| BE
 
     style G0 fill:#fff3cd,stroke:#d4a017,color:#000
+    style PF fill:#d4edda,stroke:#28a745,color:#000
+    style Tier fill:#fff3cd,stroke:#d4a017,color:#000
     style Idea fill:#f5f5f5,stroke:#666,color:#000
     style R fill:#e1f5ff,stroke:#0366d6,color:#000
     style SW fill:#e1f5ff,stroke:#0366d6,color:#000
@@ -71,6 +78,7 @@ flowchart TD
     style FE fill:#e1f5ff,stroke:#0366d6,color:#000
     style TV fill:#e1f5ff,stroke:#0366d6,color:#000
     style V fill:#e1f5ff,stroke:#0366d6,color:#000
+    style RF fill:#e1f5ff,stroke:#0366d6,color:#000
     style CP1 fill:#fff3cd,stroke:#d4a017,color:#000
     style CP2 fill:#fff3cd,stroke:#d4a017,color:#000
     style CP3 fill:#fff3cd,stroke:#d4a017,color:#000
@@ -79,19 +87,22 @@ flowchart TD
 | # | Agent | Tools | Role |
 |---|---|---|---|
 | 0 | *(orchestrator)* | Read, Bash | **Config gate** — validate or generate `.agenthub-config.yaml`; bind it to `00-config-resolved.md` |
-| 1 | [researcher](agents/researcher.md) | Read, Grep, Glob | Maps relevant code before any feature work begins |
-| 2 | [story-writer](agents/story-writer.md) | Read | Turns idea into user story + acceptance criteria |
-| 3 | [spec-writer](agents/spec-writer.md) | Read, Grep, Glob | Turns approved story into technical brief |
+| 0.5 | *(orchestrator)* | Bash | **Environment preflight** — probes for a container runtime, DB client, or deploy CLI the feature plausibly needs, before research starts |
+| 1 | [researcher](agents/researcher.md) | Read, Grep, Glob | Maps relevant code, verifies candidate libraries' peer-deps, and suggests a complexity tier |
+| — | *(orchestrator)* | — | **Complexity tier checkpoint** — a `trivial` suggestion pauses once (accept fast path / escalate); a `standard` suggestion proceeds with no extra prompt |
+| 2 | [story-writer](agents/story-writer.md) | Read | Turns idea into user story + acceptance criteria (skipped on the trivial fast path) |
+| 3 | [spec-writer](agents/spec-writer.md) | Read, Grep, Glob | Turns approved story into technical brief, citing ACs by number rather than restating them (skipped on the trivial fast path) |
 | 4 | [backend-builder](agents/backend-builder.md) | Read, Edit, Write, Bash | Implements backend half + unit tests |
 | 5 | [frontend-builder](agents/frontend-builder.md) | Read, Edit, Write, Bash | Implements frontend half + UI tests |
-| 6 | [test-verifier](agents/test-verifier.md) | Read, Edit, Write, Bash | Writes acceptance tests against the story |
-| 7 | [validator](agents/validator.md) | Read, Grep, Glob | Read-only gap analysis vs story and brief |
+| 6 | [test-verifier](agents/test-verifier.md) | Read, Edit, Write, Bash | Writes acceptance tests against the story; proves every gate it relies on can fail |
+| 7 | [validator](agents/validator.md) | Read, Grep, Glob | Read-only gap analysis vs story and brief; re-derives AC verdicts; checks production reachability |
+| — | [run-feedback](skills/run-feedback/SKILL.md) | *(sub-skill)* | Mechanical scorecard on the completed run, shown inline before the final checkpoint |
 
-Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill (or the dynamic [adaptive-engine](docs/adaptive-engine-guide.md)). Three human checkpoints: story approval, brief approval, PR review.
+Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill (or the dynamic [adaptive-engine](docs/adaptive-engine-guide.md)). A `standard`-tier feature gets three human checkpoints: story approval, brief approval, PR review. A `trivial`-tier feature (see [Step 1.5](skills/feature-factory/SKILL.md#step-15--complexity-tier)) consolidates the first two into one lightweight checkpoint and skips story-writer/spec-writer — it never zeroes checkpoints, only combines them.
 
 Step 0 is a **blocking config gate** — the chain does not start without a valid `.agenthub-config.yaml`. See the [config gate guide](docs/config-gate-guide.md) for why it blocks, what counts as invalid, and the scope-overlap rule.
 
-More diagrams — distribution model, drift loop, and loop framework — under [diagrams/](diagrams/).
+More diagrams — distribution model, drift loop, loop framework, and run feedback — under [diagrams/](diagrams/).
 
 ## Loop framework
 
@@ -109,7 +120,7 @@ The loop engine handles state tracking, escalating retry context, stop condition
 | `checkpointed` | Pauses after every iteration for human review |
 | `hybrid` | Runs on success; pauses on failure or limit (default) |
 
-The [feature-factory](skills/feature-factory/SKILL.md) uses the loop engine at 5 points: story revisions, spec revisions, backend↔frontend handoff, test failure fixes, and validator critical fixes.
+The [feature-factory](skills/feature-factory/SKILL.md) uses the loop engine at 6 points: the trivial-tier accept/escalate checkpoint, story revisions, spec revisions, backend↔frontend handoff, test failure fixes, and validator critical fixes.
 
 See the [loop framework diagram](diagrams/04-loop-framework.md) for the full lifecycle and the [loop guide](docs/loop-guide.md) for practical documentation on building your own loop-aware skills.
 
@@ -120,6 +131,24 @@ A loop is one node with an edge back to itself. The hub also includes a generic 
 The [feature-factory](skills/feature-factory/SKILL.md) uses it at one point: Step 4 (backend-builder + frontend-builder) runs sequentially by default, or in parallel when `spec-writer` marks the brief's API contract precise enough (`API contract confidence: high`) and `.agenthub-config.yaml` allows it (`build.parallel-builders: auto | always`). Either way, a fan-in contract-check reconciles the brief's promise against what each builder actually produced before the chain proceeds.
 
 See the [graph engine diagram](diagrams/05-graph-engine.md) and the [graph guide](docs/graph-guide.md) — including why naively parallelizing two nodes where one reads the other's live output is a race condition, not an optimization.
+
+## Mechanical gate and AC enforcement
+
+A gate is only a gate if it can fail, and a `PASS` is only real if every sub-check behind it actually ran. `test-verifier` now runs a **negative control** for every gate it relies on — a CI step, a coverage threshold, a guard/assertion helper — temporarily violating the invariant, capturing the failure, and restoring the repo before it reports that gate as evidence. A gate that can't be shown to fail is `UNENFORCED`, never satisfied. `validator` confirms the negative control is on record and, separately, greps every new exported guard/helper for a **production** (non-test) caller — an enforcement module with high test coverage and zero real callers is still a Critical finding.
+
+Both agents also apply a **mechanical AC roll-up rule**: if any sub-check's evidence is self-labelled `synthetic`, `reused`, `not executed`, or `pending`, the acceptance criterion is `PARTIAL`, never `PASS` — regardless of how many other sub-checks are solid, and regardless of what label an earlier report already attached. `feature-factory` treats `PARTIAL` like `FAIL` for loop control, so it never reaches the final checkpoint looking like a pass. These rules were motivated by real verification-theatre defects — a CI step that grepped a directory that didn't exist, a coverage list that quietly excluded the one untested file, an assertion helper imported by zero production code paths — and they run unchanged regardless of complexity tier (see below).
+
+## Trivial-tier fast path
+
+Not every feature needs a separately-approved story and brief. At Step 1.5, `researcher` — now the first agent with real evidence about scope — suggests `trivial` or `standard`, gated on what it actually found this pass (exactly one file to change, no tenant/timezone/retry/secrets/migration risk, no new dependency), not on how short the feature description happens to be. A `trivial` suggestion pauses at one lightweight checkpoint: accept the fast path, or escalate to the standard chain. Accepting consolidates story approval and brief approval into that single checkpoint and skips `story-writer`/`spec-writer` entirely — Checkpoint 3 and every downstream mechanical gate still run unchanged. If a builder discovers mid-run that the feature actually needs a migration or a new dependency, it stops, and the orchestrator generates a story and brief retroactively from what was already learned before resuming — the same escape valve a wrong `API contract confidence: high` call already gets.
+
+This exists because two structurally identical features (“add a CSS property driven by a config key”) cost 69,459 vs. 5,389 characters in the corpus that motivated it — a 13× spread with nothing in the chain routing by complexity. See [Step 1.5](skills/feature-factory/SKILL.md#step-15--complexity-tier) in the feature-factory skill for the full escalation logic.
+
+## Run feedback
+
+Immediately before Checkpoint 3's hand-off summary — including when `feature-factory` is running as the `feature-factory-chain` node inside an adaptive-engine graph — the [run-feedback](skills/run-feedback/SKILL.md) skill runs a mechanical scorecard against the completed run's own artifacts — gate enforceability, orphan code, coverage-scope bias, duplication ratio, state-file honesty, and more, every check a `grep`/count/diff, never a self-assessed quality score. It closes a real gap: the hub's `learning/` directories have been documented since v0.2.0 and were never once populated across 21 real runs, because capture depended on a human noticing a surprise. The scorecard is folded into the hand-off summary instead — shown inline, not left in a file nobody opens — and any hub-actionable finding is filed to `llm-context/feedback/inbox/` (or printed as a copy command if the hub isn't present locally) for a human to review later.
+
+`run-feedback` only ever writes findings — it never edits a hub agent or skill file itself. See the [run-feedback guide](docs/run-feedback-guide.md) and the [run-feedback diagram](diagrams/07-run-feedback.md) for the full check table, the output contract, and where this is headed next.
 
 ## Installation
 

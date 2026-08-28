@@ -31,7 +31,7 @@ Miss one box: keep it as a single-pass agent call. Loops are powerful, but they 
 
 The hub provides a generic [loop-engine skill](../skills/loop-engine/SKILL.md) that any other skill can invoke. It handles:
 
-- **State tracking**: every iteration is logged to `loop-state.jsonl` — what was tried, what failed, what changed
+- **State tracking**: every iteration is logged to `loop-state.jsonl` **the moment that iteration's VERIFY result is known** — append-only-at-transition, not batched at the end of the run. A real run once had six iterations sharing one timestamp because the file was written retroactively; a crash mid-run would have lost the entire retry history the file exists to preserve. A repeated timestamp across consecutive entries is a defect in the calling skill's integration, not a cosmetic detail.
 - **Escalating context**: each retry gets a progressively narrower, deeper view so the same mistake is not repeated
 - **Stop conditions**: success gate passes, or max iterations reached — a loop with no exit runs until it drains your budget
 - **Cost awareness**: warns when the loop is spinning (no progress) or compounding (context growing faster than it's solving)
