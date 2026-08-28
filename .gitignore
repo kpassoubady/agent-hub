@@ -32,6 +32,19 @@ node_modules/
 .venv/
 venv/
 llm-context/
+!llm-context/
+llm-context/*
+!llm-context/feedback/
+llm-context/feedback/*
+!llm-context/feedback/inbox/
+llm-context/feedback/inbox/*
+!llm-context/feedback/inbox/.gitkeep
+!llm-context/feedback/inbox/applied/
+llm-context/feedback/inbox/applied/*
+!llm-context/feedback/inbox/applied/.gitkeep
+!llm-context/feedback/inbox/rejected/
+llm-context/feedback/inbox/rejected/*
+!llm-context/feedback/inbox/rejected/.gitkeep
 
 # Personal Claude Code config (per-user permissions + paths)
 .claude/settings.local.json

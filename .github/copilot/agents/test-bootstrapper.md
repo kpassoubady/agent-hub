@@ -1,1 +1,1 @@
-/Users/kangs/code/github/agent-hub/agents/test-bootstrapper.md
+../../../agents/test-bootstrapper.md
