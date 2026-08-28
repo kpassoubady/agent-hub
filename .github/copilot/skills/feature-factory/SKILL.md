@@ -1,1 +1,1 @@
-/Users/kangs/code/github/agent-hub/skills/feature-factory/SKILL.md
+../../../../skills/feature-factory/SKILL.md

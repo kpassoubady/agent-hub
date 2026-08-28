@@ -1,6 +1,6 @@
 ---
 name: graph-engine
-version: 1.0.0
+version: 1.1.0
 hub-source: agent-hub
 description: >
   Generic graph orchestration protocol for skills that need more than one loop.
@@ -36,7 +36,7 @@ If none of these apply, a single loop or a straight sequential chain is simpler 
 |---|---|---|
 | **Node** | One unit of work: an agent, a deterministic tool/script, or a gate/check | `backend-builder`, `npm test`, a human checkpoint |
 | **Edge** | The routing between nodes | sequential, conditional (`if X then Y else Z`), parallel fan-out, fan-in, loop-back |
-| **Shared state** | The data that crosses edges — not a transcript, a structured record | `graph-state.json` (see below) |
+| **Shared state** | The data that crosses edges — the calling skill's own numbered artifacts, not a separate transcript (see "State tracking" below) | the contract-check's own output file, a node's summary file |
 | **Reality anchor** | A node whose output does not come from another agent — a real test run, a real command, real human judgment | test-verifier's actual test run, a human checkpoint |
 
 A single agent looping on itself is the smallest possible graph (one node, one self-edge — that's exactly what `loop-engine` formalizes). Graph-engine is what you reach for when you need more than one node.
@@ -105,26 +105,18 @@ If dynamic workflows aren't available (older Claude Code version, or another hos
 
 ## State tracking
 
-Graph runs persist to `graph-state.json` (not a flat log like `loop-state.jsonl`, because a graph's state is a structured record of node outputs, not a linear iteration history):
+**There is no `graph-state.json`.** An earlier version of this skill specified one; it was dropped because in practice it never held the information a resume actually needs, and it actively diverged from the truth. Two real instances: one run's file recorded status for 2 of 7 participating nodes (the other five — researcher, story-writer, spec-writer, test-verifier, validator — were simply absent); another was written once, hours after the nodes it claimed to describe had already finished, under node names from an abandoned earlier plan, claiming a `safety-approval` node that didn't exist in the approved graph, and contradicting the coverage report on whether migrations had run. A state file nobody keeps synchronized is not state — it is a second, unreliable narrative competing with the artifacts that are actually true.
 
-```json
-{
-  "run-id": "feature-slug-2026-07-31",
-  "nodes": {
-    "spec-writer": { "status": "done", "output": "03-spec.md" },
-    "backend-builder": { "status": "done", "output": "04-backend-summary.md", "started-with": "contract:03-spec.md#api-changes" },
-    "frontend-builder": { "status": "done", "output": "05-frontend-summary.md", "started-with": "contract:03-spec.md#api-changes" }
-  },
-  "fan-in": {
-    "gate": "backend-frontend-contract-check",
-    "result": "MISMATCH",
-    "detail": "frontend assumed `error.code`, backend returned `error.type`",
-    "routed-to": "backend-builder"
-  }
-}
-```
+**For a linear chain with one fan-out/fan-in pair** (the common case — e.g. `feature-factory`'s Step 4), there is nothing a separate structured file gives you that the artifacts already on disk don't:
 
-Each node that runs a loop internally still writes its own `loop-state.jsonl` under its step's state directory — graph-state.json records node-level status and fan-in results, not iteration-level detail.
+- **Node status** — derivable from which numbered output files exist (`04-backend-summary.md` present ⇒ backend-builder done). No separate status field needed.
+- **What contract a parallel node started with** — the contract is the brief's API section, fixed at Checkpoint 2 before either node starts. It doesn't change per-run; don't re-record it per-node.
+- **Fan-in result** — write it to the fan-in's own artifact (e.g. `04b-contract-check.md`), not to a second file that restates it. That artifact already carries: what was promised, what each node produced, and the match/mismatch verdict.
+- **Iteration-level retry detail** — that's `loop-state.jsonl`'s job (see `skills/loop-engine/SKILL.md`), unchanged by this section.
+
+So: **the calling skill's own numbered artifacts are the graph's state.** A resume walks the file listing (highest-numbered file present ⇒ next step), the same way a purely sequential chain already resumes — the graph adds fan-out/fan-in edges to that walk, not a parallel bookkeeping file.
+
+**When a graph genuinely needs cross-node bookkeeping beyond what artifacts capture** — many nodes (not just a pair), nodes whose per-node status isn't implied by a single output file's presence, or a fan-in gate reconciling more than two sources — a calling skill may still declare a structured state file for that case. If it does, the same honesty rule that motivated dropping the default applies doubly: every participating node must be written to it as that node actually finishes (append-only-at-transition, per `loop-engine`'s rule — see `skills/loop-engine/SKILL.md`'s "State tracking" section), a `reality-anchor` field must be a pointer to the actual captured output (a file path, a command's exit code) and never a free-text string describing what supposedly happened, and every node the calling skill's own `nodes` input declared must appear — an absent node is a bug in the file, not an implicit "not started."
 
 ## Inputs
 
@@ -137,11 +129,12 @@ The calling skill provides:
 | `contract` | Required for any `parallel-fanout` edge | What upstream artifact the parallel nodes read instead of each other |
 | `fan-in-gate` | Required for any `parallel-fanout` edge | How reconciliation is checked (command, agent diff, or rubric) and where mismatches route |
 | `reality-anchor` | Recommended | At least one node in the graph whose result doesn't come from another LLM's judgment |
-| `state-dir` | Yes | Where to persist `graph-state.json` |
+| `state-dir` | Yes | Where the calling skill's own numbered artifacts live — the graph reads/resumes from the same directory as the calling skill, not a separate graph-specific file (see "State tracking" above) |
 
 ## Failure modes
 
 - **A "parallel" fan-out node actually needs another node's live output.** Not parallelizable — that's a sequential edge. Don't force it; downgrade to sequential.
 - **Fan-in gate finds a mismatch beyond the loop-back limit.** Stop. Surface it — the contract itself is probably wrong, not either node's implementation (same escalation principle as `loop-engine`: after repeated failures, the problem is upstream).
 - **No reality anchor in the graph.** Warn the calling skill before running — an all-LLM graph checking itself is a known failure mode, not a hypothetical one.
-- **Dynamic workflows unavailable.** Fall back to sequential subagent calls; note in the run's state that true concurrency was not used.
+- **Dynamic workflows unavailable.** Fall back to sequential subagent calls; note in the calling skill's hand-off summary that true concurrency was not used.
+- **Temptation to add a structured state file "just to be safe."** Don't, for the default linear-chain-plus-one-fan-out case — see "State tracking" above. A state file that isn't kept honestly synchronized is worse than no file, because it looks authoritative and is wrong.

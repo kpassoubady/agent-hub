@@ -1,1 +1,1 @@
-/Users/kangs/code/github/agent-hub/agents/validator.md
+../../../agents/validator.md

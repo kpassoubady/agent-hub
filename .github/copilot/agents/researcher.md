@@ -1,1 +1,1 @@
-/Users/kangs/code/github/agent-hub/agents/researcher.md
+../../../agents/researcher.md

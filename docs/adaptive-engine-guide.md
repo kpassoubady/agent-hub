@@ -1,8 +1,8 @@
 # Adaptive Engine Guide
 
-The **Adaptive Engine** (`skills/adaptive-engine/SKILL.md`) is a dynamic orchestration skill designed as a flexible alternative to the fixed 7-agent pipeline used by `feature-factory`.
+The **Adaptive Engine** (`skills/adaptive-engine/SKILL.md`) is a thin wrapper around `feature-factory`'s fixed 7-agent pipeline, not an alternative to it. It exists for the rare feature that needs genuinely extra structure the fixed chain has no slot for — a precondition gate before building starts, or an independent verification pass after the chain's own hand-off.
 
-Instead of running every feature through a rigid sequence of agents, the Adaptive Engine uses a **Planner Agent** to analyze the request and dynamically construct the optimal execution graph on the fly. 
+Earlier versions of this skill had the `planner` agent re-derive the whole 7-agent pipeline into a custom graph. In practice this produced an 18-node graph where 14 nodes just re-encoded steps `feature-factory` already runs — at the cost of a full planning pass and a checkpoint — while the genuinely new nodes never executed. See `llm-context/todos/2026-08-27-run-retrospective-and-feedback-skill.md` §5 for the retrospective that motivated the redesign.
 
 ## Visual Overview
 
@@ -10,26 +10,36 @@ See the full diagram: [Adaptive Engine Architecture](../diagrams/06-adaptive-eng
 
 ## Why use the Adaptive Engine?
 
-1. **Efficiency for Small Changes:** Not every feature needs a `story-writer` and extensive research. For a simple UI text change, the planner can generate a graph that only invokes `frontend-builder` and `test-verifier`.
-2. **Safety for Large Changes:** For significant architectural work, the planner will enforce a `spec-writer` checkpoint to ensure the human reviews the technical brief before any code is written.
-3. **Dynamic Parallelization:** The planner can orchestrate complex swarms, spawning multiple builders depending on the scope of the project.
+Only when the feature has structure `feature-factory` alone cannot express:
+
+1. **A hard precondition.** Building cannot start until something external is true — another story's migration has landed, a service exposes an endpoint. Declared as a `pre-gate` node.
+2. **An independent post-build check.** A second, differently-lensed verification after the chain's own `validator` has already run — e.g. a cold security re-read. Declared as a `post-gate` node.
+3. **Genuinely independent parallel subsystems** that need to reconcile before a shared build step. Rare — feature-factory's own Step 4 fan-out already covers the common backend/frontend case.
+
+**If none of these apply, use `/feature-factory` directly.** The planner is expected to say so in most cases — treat "recommend plain feature-factory, zero extra gates" as the normal, correct outcome, not a degenerate one.
 
 ## How it works
 
-The engine operates in three distinct phases:
+### Phase 0: Config gate
+Same blocking config gate as `feature-factory`'s Step 0, run once and shared.
 
 ### Phase 1: Planning
-The user triggers the process with `/adaptive-engine <feature description>`. The `planner` agent is spawned. It reads the project's `CLAUDE.md` and the feature description, then emits a `graph.json` defining the execution nodes (agents) and edges (how they connect).
+The user triggers the process with `/adaptive-engine <feature description>`. The `planner` agent is spawned. It does **not** re-derive feature-factory's internal steps — it treats the entire chain as one opaque node, `feature-factory-chain`, and only decides whether to add pre-gate or post-gate nodes around it.
 
-Crucially, this phase ends with **Checkpoint 1**. The user is shown the proposed plan (`00-plan-summary.md`) and must approve it before execution begins. If the planner has missed a step or over-complicated a simple task, the user can request changes here.
+Checkpoint 1 shows the user `00-plan-summary.md` and the (small) `graph.json`. If the planner proposes zero extra gates, the orchestrator stops here and hands off to plain `/feature-factory` rather than running a one-node graph through Phase 2 for nothing.
 
 ### Phase 2: Execution
-Once approved, the `graph.json` is handed off to the standard [graph-engine](./graph-guide.md). The graph engine manages parallel fan-outs, sequential dependencies, and fan-in reconciliations just as it does in `feature-factory`, but across the dynamically defined topology.
+The approved `graph.json` is handed to the [graph-engine](./graph-guide.md). Pre-gates run and must pass before `feature-factory-chain` starts; `feature-factory-chain` executes by invoking the `feature-factory` skill unmodified (its own three checkpoints run exactly as documented); post-gates run afterward, reading that run's artifacts.
 
-Every generated graph must include at least one **reality anchor** (e.g., the `test-verifier` agent) to ensure LLM assumptions are tested against real-world execution.
+`feature-factory-chain` is itself a valid reality anchor — it contains `test-verifier` and `validator` internally — so the outer graph does not need a separate one unless a post-gate adds a stronger check.
 
 ### Phase 3: Hand-off
-Once the execution graph terminates, the user is presented with **Checkpoint 2**. The engine summarizes the modified files, test results, and any open validator findings, handing off the code for the human to create a Pull Request.
+Checkpoint 2 shows `feature-factory-chain`'s own Checkpoint 3 summary as-is (not restated) plus each post-gate's result. The human handles PR creation, same as `feature-factory` alone.
+
+## Shared state, not a second copy
+
+`feature-factory-chain` runs against `<project>/.claude/feature-factory/<feature-slug>/` — the exact same slug-derivation rule feature-factory itself uses. The adaptive-engine's own state directory holds only the pre-gate/post-gate artifacts and a one-line pointer to that shared directory. This closes a real bug: an earlier run was planned twice under two different invented slugs, producing incompatible graph schemas that matched neither each other nor the feature-factory directory holding the actual work.
 
 ## Integration with existing tools
-The Adaptive Engine is designed to sit alongside `feature-factory` rather than overwrite it. Existing tools and scripts (such as `bookbuilder`'s `/ship-feature`) that expect the strict output constraints of `feature-factory` (e.g., `07-validator.md`) can continue using the fixed factory, while newer or ad-hoc workflows can utilize the Adaptive Engine for speed and flexibility.
+
+Tools that expect `feature-factory`'s strict output shape (e.g. `07-validator.md`) keep working unchanged — `feature-factory-chain` produces exactly that shape, in exactly that location, whether it was invoked directly or wrapped by the adaptive engine.

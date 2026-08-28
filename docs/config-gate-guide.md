@@ -161,7 +161,16 @@ When Step 0 finds no config, it runs the detector in dry-run mode, shows you the
 
 ---
 
-## 7. The escape hatch
+## 7. What else writes to `00-config-resolved.md`
+
+Step 0 is the file's only *author* for the fields above, but two later additions append to it rather than creating their own file:
+
+- **Step 0.5 (environment preflight)** runs after Step 0, before researcher. It does not write to `00-config-resolved.md` — the preflight result is passed to researcher directly as an input, and a missing tool surfaces as a Risk in researcher's own output, not as a gate failure. The config file itself is unaffected.
+- **Step 1.5 (complexity tier)** appends a `tier: trivial` (or `tier: standard (escalated from trivial)`) field to the same `00-config-resolved.md` once the user accepts the researcher's fast-path suggestion — it does not overwrite the config gate's own fields. A resume landing between steps checks this field before assuming the chain crashed: a trivial-tier run has no `02-story.md`/`03-spec.md` by design, not by interruption.
+
+Neither addition changes what makes the gate itself valid or invalid — see §4 above for that list, which is unchanged. See [docs/run-feedback-guide.md](run-feedback-guide.md) and the [feature-factory skill](../skills/feature-factory/SKILL.md)'s Step 0.5 / Step 1.5 sections for the full detail on each.
+
+## 8. The escape hatch
 
 ```bash
 /feature-factory --no-config <description>
@@ -173,7 +182,7 @@ Use it for a throwaway experiment. Do not use it for real features — the whole
 
 ---
 
-## 8. Teaching exercise
+## 9. Teaching exercise
 
 Give students this config against a Next.js project and ask what breaks:
 

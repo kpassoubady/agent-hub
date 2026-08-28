@@ -4,6 +4,8 @@ The generic loop lifecycle that powers iterative work across the hub. Any skill 
 
 > **v0.3.0** — introduced as a first-class building block alongside the factory chain and drift loop.
 
+> **v0.12.0** — `loop-state.jsonl` is now append-only-at-transition: each entry is written the moment that iteration's VERIFY result is known, not batched at the end of the run. See "State persistence" below.
+
 ```mermaid
 flowchart TD
     Goal["Goal + Success Criteria\n(from calling skill)"]
@@ -91,7 +93,7 @@ flowchart LR
 
 ## State persistence
 
-Every iteration is logged as one JSON line in `loop-state.jsonl`:
+Every iteration is logged as one JSON line in `loop-state.jsonl`, written **the moment that iteration's VERIFY result is known** — not batched at the end of the run:
 
 ```jsonl
 {"iteration":1,"result":"FAIL","criteria_met":["C1"],"criteria_failed":["C2","C3"],"summary":"..."}
@@ -99,7 +101,7 @@ Every iteration is logged as one JSON line in `loop-state.jsonl`:
 {"iteration":3,"result":"PASS","criteria_met":["C1","C2","C3"],"criteria_failed":[],"summary":"..."}
 ```
 
-This enables **resume** (pick up after interruption), **learning** (each iteration sees what failed before), and **reporting** (calling skill shows iteration history at its checkpoint).
+Append-only-at-transition is what makes **resume** actually work: a real run once had six iterations — spec approval, reconciliation, three test-verification rounds, a coverage fix — sharing one timestamp, because the file was written retroactively after the fact. A crash mid-run would have left zero record that any of it happened. A repeated timestamp across consecutive entries is a defect in the calling skill's integration, not a cosmetic detail. Done correctly, this also enables **learning** (each iteration sees what failed before) and **reporting** (calling skill shows iteration history at its checkpoint).
 
 ## Cost awareness
 
@@ -111,14 +113,15 @@ The key metric: **cost per accepted change**, not tokens spent or loops run.
 
 ## How the feature-factory uses this
 
-The [feature-factory](../skills/feature-factory/SKILL.md) invokes the loop-engine protocol at 5 points:
+The [feature-factory](../skills/feature-factory/SKILL.md) invokes the loop-engine protocol at 6 points:
 
 | Loop point | Verifier | Max | Mode |
 |---|---|---|---|
+| Trivial-tier accept/escalate checkpoint | Human approval (binary choice) | 1 | checkpointed |
 | Story checkpoint revisions | Human approval | 3 | checkpointed |
 | Spec checkpoint revisions | Human approval | 3 | checkpointed |
-| Backend ↔ frontend handoff | Frontend-builder feedback | 3 | hybrid |
-| Test failure → builder fix | Test-verifier re-run | 3 | autonomous |
+| Backend ↔ frontend handoff / contract-check | Frontend-builder feedback, or contract-check gate | 3 | hybrid |
+| Test failure → builder fix | Test-verifier re-run (PARTIAL treated as FAIL) | 3 per criterion | autonomous |
 | Validator critical → builder fix | Validator re-run | 3 | autonomous |
 
 See [01-factory-chain.md](01-factory-chain.md) for the full chain diagram with loop-back arrows.

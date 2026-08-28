@@ -1,1 +1,1 @@
-/Users/kangs/code/github/agent-hub/agents/spec-writer.md
+../../agents/spec-writer.md
