@@ -98,6 +98,8 @@ flowchart TD
 | 7 | [validator](agents/validator.md) | Read, Grep, Glob | Read-only gap analysis vs story and brief; re-derives AC verdicts; checks production reachability |
 | — | [run-feedback](skills/run-feedback/SKILL.md) | *(sub-skill)* | Mechanical scorecard on the completed run, shown inline before the final checkpoint |
 
+Set `workflow.autonomy: guided` to stop pressing "yes" on simple projects, and run a whole roadmap on one approval with `/feature-factory --batch <roadmap.md>` — see [docs/autonomy-guide.md](docs/autonomy-guide.md).
+
 Orchestrated by the [feature-factory](skills/feature-factory/SKILL.md) skill (or the dynamic [adaptive-engine](docs/adaptive-engine-guide.md)). A `standard`-tier feature gets three human checkpoints: story approval, brief approval, PR review. A `trivial`-tier feature (see [Step 1.5](skills/feature-factory/SKILL.md#step-15--complexity-tier)) consolidates the first two into one lightweight checkpoint and skips story-writer/spec-writer — it never zeroes checkpoints, only combines them.
 
 Step 0 is a **blocking config gate** — the chain does not start without a valid `.agenthub-config.yaml`. See the [config gate guide](docs/config-gate-guide.md) for why it blocks, what counts as invalid, and the scope-overlap rule.
@@ -271,6 +273,16 @@ build:
   # marks the brief's API contract confidence: high. always/never override
   # spec-writer's per-feature judgment.
   parallel-builders: auto
+
+workflow:
+  # supervised (default) — every checkpoint asks. guided — story/brief/trivial
+  # checkpoints auto-approve when mechanical conditions hold and no risk trigger
+  # is present. autonomous — as guided, but only `stop-on` risks pause.
+  # Hard stops (open questions, out-of-scope paths, exhausted loop limits) always
+  # pause. See docs/autonomy-guide.md. Override per run: --autonomy <level>.
+  autonomy: supervised
+  # autonomous only — risk triggers that still pause (this is the default list).
+  # stop-on: [migration, auth-security, secrets, tenant-isolation, environment-missing]
 ```
 
 ### Project shape — skip what you don't have

@@ -2,6 +2,22 @@
 
 All notable changes to this hub are recorded here. Hub follows semver; each agent file also carries its own `version:` in frontmatter for finer-grained tracking.
 
+## [0.16.0] — 2026-10-27
+
+Adds configurable autonomy to the factory chain so simple projects stop needing a "yes" at every checkpoint, plus a batch mode that runs a whole roadmap on one approval.
+
+### Added
+
+- **`workflow.autonomy: supervised | guided | autonomous`** (default `supervised`, so existing projects behave identically), overridable with `--autonomy`. `guided`/`autonomous` auto-approve Step 1.5, Checkpoint 1 and Checkpoint 2 only when mechanical conditions (grep/count/path checks, never an agent's opinion) hold; otherwise the checkpoint asks and names the failed condition. `autonomous` additionally ignores risk triggers not listed in `workflow.stop-on`.
+- **Hard-stop list** (config invalid, open questions, out-of-scope brief paths, exhausted loop limits, unresolved `PARTIAL`/`FAIL`/`UNENFORCED` criteria, dirty tree at batch start) that pauses every level.
+- **Audit trail**: `STATUS: AUTO-APPROVED` markers, `00-approvals.md`, and an "Auto-approved decisions" section at the top of the hand-off summary.
+- **Batch mode** (`/feature-factory --batch <roadmap.md>`): one batch checkpoint, sequential features, one local commit per feature on `batch/<slug>`, pause-on-hard-stop, resumable via `batch.md`, one combined hand-off.
+- **`docs/autonomy-guide.md`**; `spec-writer` 1.5.0 emits a `Risk triggers` line; config gate validates `workflow.*`; `agent-hub-detect.sh` emits `workflow.autonomy: supervised`.
+
+### Changed
+
+- `feature-factory` 1.11.0, `adaptive-engine` 2.1.0 (passes the autonomy level through; plan approval auto-approves only at `autonomous`). The "never skip checkpoints" rule now reads: skipped only via the configured level and only on mechanical conditions.
+
 ## [0.15.0] — 2026-08-27
 
 Implements item 9 of the recommended sequence in `llm-context/todos/2026-08-27-run-retrospective-and-feedback-skill.md` §9/§8.4 — the `hub-improve` consumer skill and inbox. This is the last item in that retrospective's tracking checklist; all 11 recommended-sequence items are now shipped. Also resolves both of §10's remaining open questions: `hub-improve` never auto-applies (human approval required per candidate, confirmed against the retrospective's own §10.2 recommendation); `run-feedback` was already mandatory/automatic as of `v0.13.0`, so no change was needed there.

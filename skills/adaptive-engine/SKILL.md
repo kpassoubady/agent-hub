@@ -1,6 +1,6 @@
 ---
 name: adaptive-engine
-version: 2.0.0
+version: 2.1.0
 hub-source: agent-hub
 description: Thin wrapper around feature-factory's fixed chain — a planner agent declares only the extra pre/post gates a feature genuinely needs (dependency checks, independent validators), never re-derives the chain itself. Automatic mechanical run-feedback scorecard at hand-off.
 ---
@@ -43,6 +43,7 @@ Spawn the `planner` agent.
 **Sanity-check the returned graph before showing it to the user.** If any node name matches one of feature-factory's own 7 agents (`researcher`, `story-writer`, `spec-writer`, `backend-builder`, `frontend-builder`, `test-verifier`, `validator`), the planner has re-derived the chain instead of wrapping it — reject the output and re-spawn the planner with that specific correction, rather than passing a bloated graph to Checkpoint 1.
 
 **🛑 CHECKPOINT 1: Plan Approval**
+At `autonomous` autonomy, approve automatically once the sanity check passes and log it to `00-approvals.md`; at `supervised` and `guided` this always asks (plans with extra gates are rare, and the plan is the one thing no mechanical check can judge). See [docs/autonomy-guide.md](../../docs/autonomy-guide.md).
 Show the user the generated `00-plan-summary.md` and the `graph.json` structure — this should be small: the extra gates plus one node for the whole fixed chain.
 Ask: approve, request changes, or reject?
 - Rejected: Stop. Ask what to do next.
@@ -54,7 +55,7 @@ Ask: approve, request changes, or reject?
 Pass the approved `graph.json` to the `graph-engine` protocol.
 
 - Each `pre-gate` node runs to completion (and must pass) before `feature-factory-chain` starts.
-- `feature-factory-chain` executes by invoking the `feature-factory` skill itself, unmodified, against this same state directory — it is not re-implemented here. All of feature-factory's own checkpoints (story, brief, PR hand-off) run exactly as documented in `skills/feature-factory/SKILL.md`; the adaptive-engine adds no duplicate checkpoint around them.
+- `feature-factory-chain` executes by invoking the `feature-factory` skill itself, unmodified, against this same state directory — it is not re-implemented here. All of feature-factory's own checkpoints (story, brief, PR hand-off) run exactly as documented in `skills/feature-factory/SKILL.md`, including its autonomy level — the level resolved in Phase 0 is passed through unchanged; the adaptive-engine adds no duplicate checkpoint around them.
 - Each `post-gate` node runs after `feature-factory-chain` reaches its own Checkpoint 3, reading that run's artifacts as its input.
 - The `graph-engine` handles fan-out/fan-in for any pre-gates or post-gates that run concurrently with each other; `feature-factory-chain` itself is always a single sequential node in this outer graph regardless of what parallelism happens inside it (feature-factory's own Step 4 fan-out is internal to that skill).
 

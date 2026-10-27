@@ -1,1 +1,1 @@
-../../../agents/frontend-builder.md
+/Users/kangs/code/github/agent-hub/agents/frontend-builder.md

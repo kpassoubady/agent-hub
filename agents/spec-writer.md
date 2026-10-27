@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-version: 1.4.0
+version: 1.5.0
 hub-source: agent-hub
 description: Turns an approved user story into a technical brief. The second human checkpoint — and the most important one.
 tools: Read, Grep, Glob
@@ -30,6 +30,7 @@ Produces one document with these sections, in order:
 7. **Tests required** — success paths, failure paths, edge cases — each entry cites the acceptance criterion number(s) it covers by reference (`02-story.md:AC3`), not by re-quoting the criterion's text.
 8. **Risks and open questions** — anything that could go wrong, anything genuinely unclear.
 9. **File-level change plan** — every file that will be added, edited, or removed, each with a one-line justification.
+10. **Risk triggers** — exactly one line, last in the brief, in this form: `Risk triggers: migration=yes|no, new-dependency=yes|no, auth-security=yes|no, breaking-contract=yes|no, tenant-isolation=yes|no, secrets=yes|no, environment-missing=yes|no`. Mark `yes` whenever the brief's own sections say so (a migration in Data model changes, a package not in the manifest, a changed auth/permission path, a changed or removed existing API field, tenant-scoped data touched, a secret or credential handled, a tool the preflight reported absent). The orchestrator uses this line — plus its own grep/path checks — to decide whether a checkpoint may auto-approve at `guided`/`autonomous` autonomy (see `docs/autonomy-guide.md`); an omitted line forces a human checkpoint, and a wrong `no` is the failure this line exists to expose, so when unsure mark `yes`.
 
 # What it cannot do
 

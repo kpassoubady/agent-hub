@@ -91,6 +91,9 @@ test:
   command: "..."
 build:
   parallel-builders: auto | always | never   # default auto
+workflow:
+  autonomy: supervised | guided | autonomous  # default supervised; see docs/autonomy-guide.md
+  stop-on: [...]                              # autonomous only; risk triggers that still pause
 ```
 
 `project.shape` controls which agents run. Missing or invalid config → Step 0 blocks (it no longer assumes `full-stack`). `backend.folders` and `frontend.folders` must not overlap — the gate rejects a config where one contains the other, since each is a hard scope restriction for its builder. `build.parallel-builders` controls whether `feature-factory`'s backend/frontend step (Step 4) runs sequentially or in parallel; `auto` defers to `spec-writer`'s per-feature `API contract confidence` line.
