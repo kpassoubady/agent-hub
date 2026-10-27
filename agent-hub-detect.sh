@@ -648,6 +648,14 @@ EOF
   fi
   echo "  acceptance-framework: $TEST_FRAMEWORK"
   echo "  command: $TEST_CMD"
+  cat <<'EOF2'
+
+workflow:
+  # How many checkpoints wait for a human. supervised (default) | guided | autonomous.
+  # guided auto-approves story/brief when mechanical checks pass and no risk
+  # trigger (migration, new dependency, auth, ...) is present. See docs/autonomy-guide.md.
+  autonomy: supervised
+EOF2
 }
 
 YAML_CONTENT=$(build_yaml)

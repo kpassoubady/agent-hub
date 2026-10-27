@@ -1,15 +1,15 @@
 ---
 name: feature-factory
-version: 1.10.0
+version: 1.11.0
 hub-source: agent-hub
-description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints, a blocking config gate, an environment preflight, mechanical gate/AC enforcement, a trivial-tier fast path for small features, and an automatic mechanical run-feedback scorecard at hand-off.
+description: Orchestrates the 7-agent factory chain to build a feature from idea to validated implementation, with three human checkpoints that a configurable autonomy level (`supervised`/`guided`/`autonomous`) can auto-approve when mechanical conditions hold, a batch mode that runs a whole roadmap on one approval, a blocking config gate, an environment preflight, mechanical gate/AC enforcement, a trivial-tier fast path for small features, and an automatic mechanical run-feedback scorecard at hand-off.
 ---
 
 # Feature Factory
 
 Orchestrates the 7-agent factory chain: researcher → story-writer → spec-writer → backend-builder + frontend-builder → test-verifier → validator.
 
-Three human checkpoints — story approval, brief approval, PR review — for `standard`-tier features. A `trivial`-tier feature (see [Step 1.5](#step-15--complexity-tier)) collapses the first two into one lightweight checkpoint and skips story-writer and spec-writer entirely; test-verifier and validator still run unchanged. Everything else runs on its own. The backend/frontend step runs sequentially or in parallel per feature — see [Step 4](#step-4--build) and [graph-engine](../graph-engine/SKILL.md).
+Three human checkpoints — story approval, brief approval, PR review — for `standard`-tier features. A `trivial`-tier feature (see [Step 1.5](#step-15--complexity-tier)) collapses the first two into one lightweight checkpoint and skips story-writer and spec-writer entirely; test-verifier and validator still run unchanged. Everything else runs on its own. How many of those checkpoints actually wait for a human is set by the [autonomy level](#autonomy-levels); `/feature-factory --batch <roadmap>` runs many features on one approval — see [Batch mode](#batch-mode). The backend/frontend step runs sequentially or in parallel per feature — see [Step 4](#step-4--build) and [graph-engine](../graph-engine/SKILL.md).
 
 ## When to use
 
@@ -55,6 +55,7 @@ If the detector is unavailable (hub path unknown, script missing), hand-write a 
 | Shape is known | `project.shape` is not one of `full-stack` \| `backend-only` \| `frontend-only` \| `library` |
 | Shape matches sections | shape is `backend-only`/`library` but `frontend.folders` is populated, or `frontend-only` but `backend.folders` is populated |
 | Parallel flag is known | `build.parallel-builders` is set and is not `auto` \| `always` \| `never` |
+| Autonomy is known | `workflow.autonomy` is set and is not `supervised` \| `guided` \| `autonomous`, or `workflow.stop-on` contains anything outside the risk-trigger vocabulary in [docs/autonomy-guide.md](../../docs/autonomy-guide.md#3-auto-approval-conditions) |
 
 If `test.command` (or any `*-command` key) resolves to a placeholder rather than a real command — `agent-hub-detect.sh`'s own fallback text (`echo 'no test command configured'`), or a `REPLACE_ME` folder it couldn't confirm — treat that the same as failing the "commands resolve" check: **fail, do not proceed.** Point the user at the `test-bootstrap` skill to install a real framework and smoke test first, then re-run Step 0. A chain that "passes" tests by running `echo` is worse than one that visibly has no tests, because the coverage report and validator will both report green.
 
@@ -97,6 +98,8 @@ backend.test-command: pnpm test
 backend.typecheck-command: pnpm exec tsc --noEmit
 backend.lint-command: pnpm lint
 build.parallel-builders: auto
+autonomy: guided            # resolved: --autonomy flag > workflow.autonomy > supervised
+stop-on: migration, auth-security, secrets, tenant-isolation, environment-missing
 ```
 
 **Every downstream agent reads this file, not the YAML.** That is what makes Step 0 binding rather than advisory. It also means each command string is resolved and validated exactly once instead of being re-derived by the researcher, the spec-writer, and both builders.
@@ -121,7 +124,7 @@ This is a real bug the hub has shipped: a project correctly declaring `shape: ba
 
 #### Escape hatch
 
-`/feature-factory --no-config <description>` runs without a config for a genuine one-off. It assumes `full-stack`, and the Checkpoint 3 summary must state prominently that the run was unconfigured and which commands were guessed. Use it for throwaway experiments, not for real features.
+`/feature-factory --no-config <description>` runs without a config for a genuine one-off. It assumes `full-stack`, always runs at `supervised` autonomy, and the Checkpoint 3 summary must state prominently that the run was unconfigured and which commands were guessed. Use it for throwaway experiments, not for real features.
 
 ### Step 0.5 — Environment preflight
 
@@ -146,14 +149,14 @@ Any library the researcher names as a recommendation carries a peer-dependency c
 
 The researcher is the first agent with real evidence about scope — it has read the actual files, so this is where the tier gets decided, not as a blind heuristic against the raw feature description before anything was read. Read `01-research.md`'s "Suggested complexity tier" field.
 
-**🛑 CHECKPOINT (trivial fast-path only) — if the researcher suggests `trivial`, show the user its one-paragraph scope read and the file it names. Ask: accept fast path, or escalate to standard?**
+**🛑 CHECKPOINT (trivial fast-path only) — if the researcher suggests `trivial`, show the user its one-paragraph scope read and the file it names. Ask: accept fast path, or escalate to standard?** At `guided`/`autonomous` autonomy, accept automatically (the `trivial` criteria are already mechanical) and log it — see [Autonomy levels](#autonomy-levels).
 
 - *Escalate*: proceed to Step 2 (Story) as normal — the standard chain, unchanged.
 - *Accept*: mark `<feature-slug>` as `tier: trivial` in `00-config-resolved.md` (append, don't overwrite the config gate's own fields) and skip directly to Step 4 (Build). Story-writer and spec-writer do not run.
 
 If the researcher suggests `standard`, skip this checkpoint entirely and proceed straight to Step 2 — a `standard` suggestion needs no separate confirmation, since the full two-checkpoint chain is already the safe default.
 
-**Why one checkpoint, not zero.** This skill's own "What this skill does NOT do" section treats the three checkpoints as non-negotiable. A trivial-tier run does not violate that: it still gates on human approval before any code changes, it just consolidates the two pre-build checkpoints (story approval, brief approval) into one, because for a single-file, no-data-model, no-new-dependency change there is nothing in a separately-approved story or brief that the researcher's scope read didn't already establish. Checkpoint 3 (PR review) is untouched either way.
+**Why one checkpoint, not zero (at `supervised`).** This skill's own "What this skill does NOT do" section treats the pre-build gate as non-negotiable at the default level. A trivial-tier run does not violate that: it still gates on human approval before any code changes, it just consolidates the two pre-build checkpoints (story approval, brief approval) into one, because for a single-file, no-data-model, no-new-dependency change there is nothing in a separately-approved story or brief that the researcher's scope read didn't already establish. Checkpoint 3 (PR review) is untouched either way.
 
 **What "trivial" skips and what it doesn't.** Story-writer and spec-writer (and their prose) are skipped. Everything downstream of Step 4 — test-verifier's negative-control requirement and mechanical AC roll-up rule, validator's Critical-finding gates, the loop-control limits — runs exactly as it does for a `standard` feature. See "Trivial tier and the build/verify chain" below for how a builder without a brief still gets the inputs those agents expect.
 
@@ -166,6 +169,8 @@ Save to `02-story.md`.
 - Rejected: stop. Ask what to do next.
 - Request changes: capture the specific feedback, re-spawn story-writer with it, save as a new version, return to checkpoint.
 - Approved: add `STATUS: APPROVED` marker to `02-story.md` and proceed.
+
+**Autonomy:** at `guided`/`autonomous`, evaluate the Checkpoint 1 conditions in [docs/autonomy-guide.md §3](../../docs/autonomy-guide.md#3-auto-approval-conditions). All hold → mark `STATUS: AUTO-APPROVED (autonomy=<level>)`, append a row to `00-approvals.md`, proceed without showing the story. Any fails → run the checkpoint as above, naming the failed condition first.
 
 ### Step 3 — Spec
 Spawn the `spec-writer` agent. Inputs: approved story + researcher's output + project CLAUDE.md.
@@ -182,6 +187,8 @@ This is the most important checkpoint. Watch for and call out:
 - Rejected: stop. Ask whether to revise the story (back to Step 2) or abandon.
 - Request changes: capture the specific issue, re-spawn spec-writer, save as a new version, return to checkpoint.
 - Approved: mark `STATUS: APPROVED` and proceed.
+
+**Autonomy:** same pattern with the Checkpoint 2 conditions. The orchestrator itself runs the H3 path-prefix check, the AC-citation grep, and reads spec-writer's `Risk triggers` line — it does not ask an agent whether the brief is safe. Auto-approved → `STATUS: AUTO-APPROVED (autonomy=<level>)` plus an `00-approvals.md` row.
 
 ### Trivial tier and the build/verify chain
 
@@ -291,7 +298,7 @@ Save to `07-validator.md` — this is now the single file holding both the cover
 
 Handle findings:
 - **Critical**: loop back to the appropriate builder. Re-run validator after the fix. Repeat until no Critical findings remain.
-- **Important**: present to user. Ask: fix now (loop) or accept (continue)?
+- **Important**: present to user. Ask: fix now (loop) or accept (continue)? At `guided`/`autonomous`: run one automatic fix round (counts against the validator loop limit); anything still open is listed in the Checkpoint 3 summary rather than blocking.
 - **Minor**: report only. User reviews at the final checkpoint.
 
 ### Step 7 — Hand off
@@ -299,6 +306,7 @@ Handle findings:
 Before presenting Checkpoint 3, invoke the [run-feedback skill](../run-feedback/SKILL.md) against this feature's state directory. It writes `08-feedback.md` (mechanical checks only — gate enforceability, orphan code, duplication ratio, state-file honesty, and the rest of its check table) and, when the hub is present locally, files any hub-actionable finding to its feedback inbox. Fold its ~600-word Part A scorecard into the Checkpoint 3 summary below as one more section — do not present it as a separate checkpoint, and do not let the chain block on anything it finds (that's `validator`'s job, already done in Step 6).
 
 **🛑 CHECKPOINT 3 — Summarize for the user:**
+- If any decision was auto-approved: an **Auto-approved decisions** section first, built from `00-approvals.md` (checkpoint, level, risk triggers present)
 - What was built (one paragraph)
 - Files changed (count + folder breakdown)
 - Tests added (count + acceptance criteria covered)
@@ -306,7 +314,7 @@ Before presenting Checkpoint 3, invoke the [run-feedback skill](../run-feedback/
 - Run-feedback's scorecard (Part A of `08-feedback.md`), plus a note naming how many Part B hub-change proposals exist and whether they were filed to the hub's inbox
 - The local branch name and a suggested PR title
 
-The chain stops here. The hub never opens PRs on its own — the human reviews the diff and runs `gh pr create` (or equivalent).
+The chain stops here at every autonomy level — Checkpoint 3 gates nothing. In batch mode this summary is replaced by one combined hand-off (see [Batch mode](#batch-mode)). The hub never opens PRs on its own — the human reviews the diff and runs `gh pr create` (or equivalent).
 
 ## Loop control
 
@@ -341,6 +349,8 @@ This applies to all retry loops: backend-builder retries (test failures, validat
 ## Loop integration
 
 The feature-factory follows the generic [loop-engine protocol](../loop-engine/SKILL.md) at 5 points. Each maps to the loop engine's 5-phase cycle (DISCOVER → PLAN → EXECUTE → VERIFY → ITERATE) with explicit configuration.
+
+**Autonomy and loop points 0–2.** At `guided`/`autonomous` a human-approval verifier is replaced by the mechanical conditions in [docs/autonomy-guide.md §3](../../docs/autonomy-guide.md#3-auto-approval-conditions) when they all hold; otherwise the loop point runs in `checkpointed` mode exactly as written below.
 
 ### Loop point 0 — Trivial-tier accept/escalate checkpoint (Step 1.5)
 
@@ -472,6 +482,32 @@ Step 4 (backend-builder + frontend-builder) follows the generic [graph-engine pr
 
 See the [graph engine diagram](../../diagrams/05-graph-engine.md) for the visual and [docs/graph-guide.md](../../docs/graph-guide.md) for when parallelizing a pair of nodes is safe versus when it's a race condition in disguise.
 
+## Autonomy levels
+
+`workflow.autonomy` in `.agenthub-config.yaml` (or `--autonomy <level>`) sets how many checkpoints wait for a human. Default `supervised` — behaviour exactly as documented in the steps above.
+
+- **`supervised`** — every checkpoint asks.
+- **`guided`** — Step 1.5, Checkpoint 1 and Checkpoint 2 auto-approve when their mechanical conditions hold and no risk trigger is present; otherwise they ask, naming the failed condition. Validator `Important` findings get one automatic fix round.
+- **`autonomous`** — as `guided`, but risk triggers only pause the run when listed in `workflow.stop-on`.
+
+**Hard stops pause `guided` and `autonomous` runs and are never auto-approved:** invalid/missing config, any open question, a brief file path outside the resolved scopes, any exhausted loop limit, and any acceptance criterion still `PARTIAL`/`FAIL`/`UNENFORCED` after its retries. Full list, auto-approval conditions, risk-trigger vocabulary and audit-trail format: [docs/autonomy-guide.md](../../docs/autonomy-guide.md).
+
+Every auto-approval is recorded — `STATUS: AUTO-APPROVED` on the artifact, a row in `00-approvals.md`, and a section at the top of the Checkpoint 3 summary — so nothing is approved invisibly.
+
+## Batch mode
+
+`/feature-factory --batch <roadmap.md> [--autonomy guided|autonomous]` runs a list of features on one approval. Requires `guided` or `autonomous`; at `supervised`, ask the user to pick one.
+
+1. **Preconditions.** Step 0 runs once for the batch. If `git status --porcelain` is non-empty, stop (hard stop H6) — per-feature diffs can't be isolated.
+2. **Parse** the roadmap: each top-level bullet or `##` heading is a feature, in order; an optional `depends-on: <n>` line marks a prerequisite. Write `<project>/.claude/feature-factory/_batch/<batch-slug>/batch.md` — a table of `# | feature | slug | status` (`pending | running | done | stopped | skipped | blocked`).
+3. **🛑 BATCH CHECKPOINT (the only routine approval)** — show the ordered features, the autonomy level, the hard-stop list, and the git behaviour (local branch `batch/<batch-slug>`, one local commit per completed feature, nothing pushed). Ask: approve, edit the list, or abort.
+4. **Run each feature sequentially** — never in parallel, features share the working tree — through Steps 1–7 under the chosen level, each with its own state directory and run-feedback scorecard. Update `batch.md` the moment a status changes. After a feature completes, commit it locally.
+5. **On a hard stop**, mark the feature `stopped`, pause the batch, and ask: resume after the fix, skip it (features that `depends-on` it become `blocked`), or abort. Never continue past a stopped feature on your own.
+6. **Hand-off:** one combined summary instead of per-feature Checkpoint 3s — per-feature status/files/tests/open validator findings, the merged **Auto-approved decisions** section, and each scorecard's headline line.
+7. **Resume:** re-invoking with the same roadmap reads `batch.md` and skips `done` features.
+
+Detail and rationale: [docs/autonomy-guide.md §5](../../docs/autonomy-guide.md#5-batch-mode--one-approval-for-a-roadmap).
+
 ## Learning directory (optional, project-local)
 
 If `<project>/.claude/feature-factory/learning/` exists, the chain reads/writes three files:
@@ -489,10 +525,11 @@ The learning directory is per-project, not per-feature, and survives across chai
 All intermediate outputs persist under `<project>/.claude/feature-factory/<feature-slug>/`:
 
 ```
+00-approvals.md        (one row per checkpoint decision — human or auto — appended as it happens; see autonomy guide §4)
 00-config-resolved.md   (Step 0 gate output — the binding config for every later agent; carries `tier: trivial|standard` after Step 1.5)
 01-research.md          (includes the Suggested complexity tier field read at Step 1.5)
-02-story.md          (with STATUS: APPROVED once approved — absent for a trivial-tier run unless it later escalates)
-03-spec.md           (with STATUS: APPROVED once approved; includes API contract confidence — absent for a trivial-tier run unless it later escalates)
+02-story.md          (with STATUS: APPROVED or AUTO-APPROVED once approved — absent for a trivial-tier run unless it later escalates)
+03-spec.md           (with STATUS: APPROVED or AUTO-APPROVED once approved; includes API contract confidence — absent for a trivial-tier run unless it later escalates)
 04-backend-summary.md
 04b-contract-check.md   (only in parallel mode)
 05-frontend-summary.md
@@ -511,9 +548,10 @@ This lets the chain resume cleanly if the session is interrupted. On resume: rea
 
 - Open a PR (the human handles checkpoint 3 hand-off)
 - Modify CLAUDE.md (that's the drift loop, run separately after merge)
-- Skip checkpoints, even if the user says "just do it" — every run gets at least one pre-build human gate (the trivial fast path's single accept/escalate checkpoint, or story + brief approval for everything else) plus Checkpoint 3 at hand-off. A trivial-tier run consolidates checkpoints, it never zeroes them.
+- Skip checkpoints because the user says "just do it". A checkpoint is skipped only through the configured autonomy level, and only when its mechanical conditions hold — never on the orchestrator's own judgment. At `supervised` (the default) every run gets at least one pre-build human gate plus Checkpoint 3; a trivial-tier run consolidates checkpoints, it never zeroes them at that level.
 - Add agents to the chain at runtime (the chain is fixed; new agents go through hub planning)
-- Run in fully autonomous mode without checkpoints — that's a different skill, not this one
+- Auto-approve past a hard stop at any autonomy level, or let an agent (rather than a grep/count/diff on the artifacts) decide a checkpoint is safe to skip
+- Push, or open a PR, in any mode — batch mode makes local commits only
 - Proceed past Step 0 on an assumed or invalid config (use `--no-config` if you genuinely mean to)
 - Spawn a builder that Step 0 or the brief already ruled out, just to have it report "N/A"
 - Weaken test-verifier's negative-control requirement or validator's mechanical AC roll-up rule for a trivial-tier run — those gates cost the same regardless of tier
@@ -525,6 +563,7 @@ Every run, note for the hub's drift loop:
 - Any time the user rejected story or spec for the same reason twice
 - Any time the validator caught a class of issue that wasn't in its default checks
 - Any time Step 4 ran in parallel mode and the contract-check found a mismatch — signals `spec-writer` is over-confident marking `API contract confidence: high`
+- Any time an auto-approved feature later hit a validator Critical or a hard stop — signals the risk-trigger heuristics (or the autonomy level for this project) are too loose
 - Any time a trivial-tier run escalated mid-build — signals `researcher` is over-confident marking `Suggested complexity tier: trivial`; recurring escalations on the same kind of feature are a reason to tighten the tier heuristic in `agents/researcher.md`
 
 These feed into hub agent updates. Surface them in the checkpoint 3 summary so the user can decide whether to update the hub now or batch later.

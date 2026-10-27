@@ -1,1 +1,1 @@
-../../../agents/planner.md
+/Users/kangs/code/github/agent-hub/agents/planner.md

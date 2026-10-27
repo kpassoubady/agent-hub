@@ -105,6 +105,7 @@ The gate checks all of the following and reports every failure at once, each wit
 | Shape is known | `project.shape` is not one of the four valid values |
 | Shape matches sections | shape is `backend-only`/`library` but `frontend.folders` is populated |
 | Parallel flag is known | `build.parallel-builders` is set to something other than `auto`/`always`/`never` |
+| Autonomy is known | `workflow.autonomy` is not `supervised`/`guided`/`autonomous`, or `workflow.stop-on` names something outside the risk-trigger vocabulary (see [autonomy-guide.md](autonomy-guide.md)) |
 
 Note what is *not* on this list: the gate does not run your test suite. It checks that the command **exists**, not that it passes. Verifying behaviour is the test-verifier's job.
 
@@ -213,6 +214,7 @@ The point of the exercise: every one of these fails **silently** under an adviso
 ## Related
 
 - [feature-factory skill](../skills/feature-factory/SKILL.md) — Step 0, the full gate specification
+- [autonomy levels and batch mode](autonomy-guide.md) — `workflow.autonomy`, hard stops, `--batch`
 - [adaptive-engine skill](../skills/adaptive-engine/SKILL.md) — Phase 0, same gate before planning
 - [factory chain diagram](../diagrams/01-factory-chain.md) — where the gate sits visually
 - [README configuration section](../README.md#project-specific-configuration) — schema reference
